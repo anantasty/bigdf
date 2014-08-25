@@ -5,3 +5,11 @@
 .project
 
 *.jar
+
+.cache
+
+*.class
+
+*.cache
+
+target/*
