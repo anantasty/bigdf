@@ -58,20 +58,23 @@ h: scala.collection.immutable.Vector[String] = Vector(a, b, c, Date)
 scala> val v = Vector(Vector(11.0, 12.0, 13.0), Vector(21.0, 22.0, 23.0), Vector(31.0, 32.0, 33.0), Vector(1.36074391383E12, 1.360616948975E12, 1.36055080601E12))
 v: scala.collection.immutable.Vector[scala.collection.immutable.Vector[Double]] = Vector(Vector(11.0, 12.0, 13.0), Vector(21.0, 22.0, 23.0), Vector(31.0, 32.0, 33.0), Vector(1.36074391383E12, 1.360616948975E12, 1.36055080601E12))
 
-scala> val df2 = DF(sc, h, v)
+scala> val df2 = DF(sc, h, v)   /*  create a new df from vector of columns and column header names */
 Column: a Type: Double
 Column: b Type: Double
 Column: c Type: Double
 Column: Date Type: Double
 df2: com.ayasdi.df.DF = Silence is golden
 
-scala> val c = df2("a") + df2("b")
-c: com.ayasdi.df.Column[Any] = 
-	type:Double
-	count:3
-	parseErrors:0
+scala> df2.numCols
+res8: Int = 5
 
-scala> df2("a+b") = c
+scala> df2.num
+numCols   numRows   
+
+scala> df2.numRows
+res9: Long = 3
+
+scala> df2("a+b") = df2("a") + df2("b")             /* new column as sum of two existing ones */
 New Column: a+b 
 
 scala> df2.describe
@@ -96,4 +99,62 @@ c:
 	count:3
 	parseErrors:0
 
+scala> df2("c").describe	/* describe a column, note the summary stats for a column of float/double */
+	type:Double
+	count:3
+	parseErrors:0
+	(count: 3, mean: 32.000000, stdev: 0.816497, max: 33.000000, min: 31.000000)
+
+scala> val dfColSelect=DF(sc, df2("a", "b"))  /*  new datafram with subset of columns ala relational project */
+Column: a Type: Double
+Column: b Type: Double
+dfColSelect: com.ayasdi.df.DF = Silence is golden
+
+scala> dfColSelect.describe
+b:
+	type:Double
+	count:3
+	parseErrors:0
+a:
+	type:Double
+	count:3
+	parseErrors:0
+	
+scala> val dfFilter=df2((df2("a") > 12.0 && df2("b") > 20.0))  /*  filter rows ala relational select */
+Column: a 			Type: Double
+Column: b 			Type: Double
+Column: c 			Type: Double
+Column: Date 			Type: Double
+Column: a+b 			Type: Double
+dfFilter: com.ayasdi.df.DF = Silence is golden
+
+scala> dfFilter.describe 
+b:
+	type:Double
+	count:1
+	parseErrors:0
+Date:
+	type:Double
+	count:1
+	parseErrors:0
+a+b:
+	type:Double
+	count:1
+	parseErrors:0
+a:
+	type:Double
+	count:1
+	parseErrors:0
+c:
+	type:Double
+	count:1
+	parseErrors:0
+
+scala> val dfSelectCustomFilter = df2(df2("a").filter { x: Double => x > 10.0 } ) /* custom filter */
+Column: a 			Type: Double
+Column: b 			Type: Double
+Column: c 			Type: Double
+Column: Date 			Type: Double
+Column: a+b 			Type: Double
+dfSelectCustomFilter: com.ayasdi.df.DF = Silence is golden	
 
