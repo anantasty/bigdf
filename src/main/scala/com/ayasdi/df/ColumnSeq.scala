@@ -6,6 +6,7 @@
 package com.ayasdi.df
 
 import scala.reflect.ClassTag
+import scala.reflect.classTag
 import scala.reflect.runtime.universe
 import scala.reflect.runtime.universe.TypeTag.Double
 
@@ -36,12 +37,15 @@ case class ColumnSeq(val cols: Seq[(String, Column[Any])]) {
     }
     
     def map[U: ClassTag](mapper: Array[Any] => U): Column[Any] = {
+        val tpe = classTag[U]
         val partialRows = computePartialRows
-        val mapped = partialRows.map{ row => mapper(row) }
-        mapped.first match {
-            case x: Double => new Column[Double](mapped.asInstanceOf[RDD[Double]], -1, 0).asInstanceOf[Column[Any]]
-            case x: String => new Column[String](mapped.asInstanceOf[RDD[String]], -1, 0).asInstanceOf[Column[Any]]
-        }    
+        val mapped = partialRows.map { row => mapper(row) }
+        if(tpe == classTag[Double])
+        	new Column[Double](mapped.asInstanceOf[RDD[Double]], -1, 0).asInstanceOf[Column[Any]]
+        else if(tpe == classTag[String])
+            new Column[String](mapped.asInstanceOf[RDD[String]], -1, 0).asInstanceOf[Column[Any]]
+        else
+            null
     }
 
     override def toString() = {

@@ -9,6 +9,7 @@ import scala.reflect.runtime.{ universe => ru }
 
 abstract class Condition {
     def check(row: Array[Any]): Boolean
+    def colSeq: List[Int]
 
     def &&(that: Condition) = {
         new AndCondition(this, that)
@@ -30,14 +31,26 @@ abstract class Condition {
     def unary_~ = unary_!
 }
 
-case class DoubleColumnWithDoubleScalarCondition(val colIndex: Int,
-                                                 val cmp: Double => Boolean) extends Condition {
+abstract class UnaryCondition(val colIndex: Int) extends Condition with Serializable {
+    def colSeq = List(colIndex)
+}
+
+abstract class BinaryCondition(val colIndexLeft: Int,
+                               val colIndexRight: Int) extends Condition with Serializable {
+    def colSeq = List(colIndexLeft, colIndexRight)
+}
+
+abstract class CompoundCondition(val left: Condition,
+                                 val right: Condition) extends Condition with Serializable {
+    def colSeq = left.colSeq ++ right.colSeq
+}
+
+case class DoubleColumnWithDoubleScalarCondition(i: Int, val cmp: Double => Boolean) extends UnaryCondition(i) {
     def check(row: Array[Any]) = cmp(row(colIndex).asInstanceOf[Double])
 }
 
-case class DoubleColumnWithDoubleColumnCondition(val colIndexLeft: Int,
-                                                 val colIndexRight: Int,
-                                                 val cmp: (Double, Double) => Boolean) extends Condition {
+case class DoubleColumnWithDoubleColumnCondition(i: Int, j: Int,
+                                                 val cmp: (Double, Double) => Boolean) extends BinaryCondition(i, j) {
     def check(row: Array[Any]) = {
         val elemLeft = row(colIndexLeft)
         val elemRight = row(colIndexRight)
@@ -46,16 +59,16 @@ case class DoubleColumnWithDoubleColumnCondition(val colIndexLeft: Int,
             case _                      => println(s"DoubleColumnCondition2 only likes Doubles"); false
         }
     }
+
 }
 
-case class StringColumnWithStringScalarCondition(val colIndex: Int,
-                                                 val cmp: String => Boolean) extends Condition {
+case class StringColumnWithStringScalarCondition(i: Int,
+                                                 val cmp: String => Boolean) extends UnaryCondition(i) {
     def check(row: Array[Any]) = cmp(row(colIndex).asInstanceOf[String])
 }
 
-case class StringColumnWithStringColumnCondition(val colIndexLeft: Int,
-                                                 val colIndexRight: Int,
-                                                 val cmp: (String, String) => Boolean) extends Condition {
+case class StringColumnWithStringColumnCondition(i: Int, j: Int,
+                                                 val cmp: (String, String) => Boolean) extends BinaryCondition(i, j) {
     def check(row: Array[Any]) = {
         val elemLeft = row(colIndexLeft)
         val elemRight = row(colIndexRight)
@@ -66,18 +79,15 @@ case class StringColumnWithStringColumnCondition(val colIndexLeft: Int,
     }
 }
 
-case class AndCondition(val left: Condition,
-                        val right: Condition) extends Condition {
+case class AndCondition(l: Condition, r: Condition) extends CompoundCondition(l, r) {
     def check(row: Array[Any]) = left.check(row) && right.check(row)
 }
 
-case class OrCondition(val left: Condition,
-                       val right: Condition) extends Condition {
+case class OrCondition(l: Condition, r: Condition) extends CompoundCondition(l, r) {
     def check(row: Array[Any]) = left.check(row) || right.check(row)
 }
 
-case class XorCondition(val left: Condition,
-                        val right: Condition) extends Condition {
+case class XorCondition(l: Condition, r: Condition) extends CompoundCondition(l, r) {
     def check(row: Array[Any]) = {
         val a = left.check(row)
         val b = right.check(row)
@@ -88,15 +98,16 @@ case class XorCondition(val left: Condition,
 
 case class NotCondition(val cond: Condition) extends Condition {
     def check(row: Array[Any]) = !cond.check(row)
+    def colSeq = cond.colSeq
 }
 
-case class DoubleColumnCondition(val colIndex: Int,
-                                 val f: Double => Boolean) extends Condition {
+case class DoubleColumnCondition(i: Int,
+                                 val f: Double => Boolean) extends UnaryCondition(i) {
     def check(row: Array[Any]) = f(row(colIndex).asInstanceOf[Double])
 }
 
-case class StringColumnCondition(val colIndex: Int,
-                                 val f: String => Boolean) extends Condition {
+case class StringColumnCondition(i: Int,
+                                 val f: String => Boolean) extends UnaryCondition(i) {
     def check(row: Array[Any]) = f(row(colIndex).asInstanceOf[String])
 }
 
