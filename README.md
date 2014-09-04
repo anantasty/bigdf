@@ -8,6 +8,8 @@ How does it work?
 =================
 A dataframe contains a collection of columns that are indexed by “names” given to them and also by an integer. 
 The “IDE” is the Scala REPL. Because Scala has some nice constructs that enable creating (internal)DSLs, no parser and/or interpreter is needed. An added benefit is that constructs not supported by the DSL can be written in Scala in the same environment and DSL and non-DSL code can be mixed arbitrarily.
+If you are new to Scala, it is easy to get started: 
+  http://ampcamp.berkeley.edu/big-data-mini-course/introduction-to-the-scala-shell.html
 
 How to get it?
 ==============
