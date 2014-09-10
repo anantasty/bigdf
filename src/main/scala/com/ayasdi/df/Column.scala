@@ -7,6 +7,7 @@ package com.ayasdi.df
 
 import org.apache.spark.rdd.DoubleRDDFunctions
 import org.apache.spark.rdd.RDD
+import org.apache.spark.util.StatCounter
 import scala.reflect.{ ClassTag, classTag }
 import scala.reflect.runtime.{ universe => ru }
 
@@ -15,8 +16,8 @@ object Preamble {
     // implicit def toRdd[T](col: Column[T]) = { col.rdd }
 }
 
-case class Column[T: ru.TypeTag](var rdd: RDD[T],
-                                 var index: Int,
+case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA */
+                                 var index: Int,  /* mutates when an orphan column is put in a DF */
                                  parseErrors: Long) {
     val tpe = ru.typeOf[T]
 
@@ -26,20 +27,28 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T],
     }    
     
     /**
+     *  statistical information about this column
+     */ 
+    var cachedStats: StatCounter = null
+    def stats = if(cachedStats != null) cachedStats 
+    			else new DoubleRDDFunctions(rdd.asInstanceOf[RDD[Double]]).stats
+    
+    /**
      * print brief description of this column
      */
     def describe() {
         println(toString)
         if (tpe ==  ru.typeOf[Double]) {
-            val stats = new DoubleRDDFunctions(rdd.asInstanceOf[RDD[Double]]).stats
-            println("\t" + stats)
+            println(s"\tmax:${stats.max}\n\tmin:${stats.min}\n\tcount:${stats.count}\n\tsum:${stats.sum}\n")
+            println(s"\tmean:${stats.mean}\n\tvariance(sample):${stats.sampleVariance}\n\tstddev(sample):${stats.sampleStdev}\n")
+            println(s"\tvariance:${stats.variance}\n\tstddev:${stats.stdev}")
         }
     }
 
     /**
-     * count number of elements
+     * count number of elements. although rdd is var not val the number of elements does not change
      */
-    def count = rdd.count
+    lazy val count = rdd.count
     
     /**
      * get rdd of doubles to use doublerddfunctions
