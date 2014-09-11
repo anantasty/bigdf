@@ -4,6 +4,9 @@ A lot of data scientists use the python library pandas for quick exploration of 
 Spark is a great map-reduce like framework that can handle very big data by using a shared nothing cluster of machines.
 This work is an attempt to provide a pandas-like DSL on top of spark, so that data scientists familiar with pandas have a very gradual learning curve.
 
+A gentle introduction is here:
+http://www.slideshare.net/codeninja4086/df-38948475?utm_source=slideshow03&utm_medium=ssemail&utm_campaign=iupload_share_slideshow
+
 How does it work?
 =================
 A dataframe contains a collection of columns that are indexed by “names” given to them and also by an integer. 
