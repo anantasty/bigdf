@@ -10,11 +10,12 @@ import scala.util.Try
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
 import org.apache.spark.rdd.RDD
-import au.com.bytecode.opencsv.CSVParser
+import org.apache.commons.csv._
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
 import scala.reflect.ClassTag
 import com.ayasdi.df.Preamble._
+import scala.collection.JavaConversions
 
 /**
  * types of joins
@@ -49,16 +50,10 @@ case class DF private (val sc: SparkContext,
      * columns are zip'd together to get rows
      */
     private def computeRows: RDD[Array[Any]] = {
-        var acc: RDD[List[Any]] = {
-            cols(colIndexToName(0)).rdd
-        }.map { List(_) }
-        for (i <- 1 until colIndexToName.size) {
-            val colName = colIndexToName(i)
-            val col = cols(colName)
-            acc =
-                acc.zip(col.rdd).map { case (l, r) => r :: l }
-        }
-        acc.map { _.reverse.toArray }
+        val first = cols(colIndexToName(0)).rdd
+        val rest =  (1 until colIndexToName.size).toList.map { i => cols(colIndexToName(i)).rdd } 
+          
+        first.zip(rest)
     }
     private var rowsRddCached: RDD[Array[Any]] = null
     def rowsRdd = {
@@ -74,6 +69,19 @@ case class DF private (val sc: SparkContext,
      * add column keys, returns number of columns added
      */
     def addHeader(header: Array[String]) = {
+        var i = 0
+        header.foreach { colName =>
+            cols.put(colName, null)
+            colIndexToName.put(i, colName)
+            i += 1
+        }
+        i
+    }
+    
+    /*
+     * add column keys, returns number of columns added
+     */
+    def addHeader(header: Iterator[String]) = {
         var i = 0
         header.foreach { colName =>
             cols.put(colName, null)
@@ -290,10 +298,9 @@ object DF {
 
         val file = sc.textFile(inFile)
         val firstLine = file.first
-        val csvParser = new CSVParser(separator)
-        val header = csvParser.parseLine(firstLine)
+        val header = CSVParser.parse(firstLine, CSVFormat.DEFAULT).iterator.next
         println(s"Found ${header.size} columns")
-        df.addHeader(header)
+        df.addHeader(JavaConversions.asScalaIterator(header.iterator))
 
         val dataLines = file.filter(_ != firstLine)
 
@@ -310,12 +317,7 @@ object DF {
          * Use mapPartitions to do that only once per partition
          */
         val columns = for (i <- 0 until df.numCols) yield {
-            dataLines.mapPartitionsWithIndex({
-                case (split, iter) => {
-                    val csvParser = new CSVParser(separator)
-                    iter.map(csvParser.parseLine(_)(i))
-                }
-            }, true)
+            dataLines.map { line => CSVParser.parse(line, CSVFormat.DEFAULT).iterator.next.get(i) }
         }
 
         var i = 0

@@ -11,8 +11,8 @@ libraryDependencies  ++= Seq(
 	    "joda-time" % "joda-time" % "2.0",
 	    "org.joda" % "joda-convert" % "1.3.1",
 	    "com.quantifind" %% "sumac" % "0.3.0",
-	    "net.sf.opencsv" % "opencsv" % "2.3",
-	    "org.scalatest" % "scalatest_2.10" % "2.0" % "test"
+	    "org.scalatest" % "scalatest_2.10" % "2.0" % "test",
+	    "org.apache.commons" % "commons-csv" % "1.0"
 )
 
 resolvers ++= Seq(
