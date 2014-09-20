@@ -3,7 +3,7 @@
  * @author mohit
  *  dataframe on spark
  */
-package com.ayasdi.df
+package com.ayasdi.bigdf
 object DFUtils {
     def countNaN(row: Array[Any]) = {
         var ret = 0

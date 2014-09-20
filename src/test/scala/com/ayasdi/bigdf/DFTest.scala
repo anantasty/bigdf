@@ -4,7 +4,7 @@
  *  dataframe on spark
  */
 
-package com.ayasdi.df
+package com.ayasdi.bigdf
 
 import scala.collection.TraversableOnce.MonadOps
 import org.apache.log4j.Level
@@ -12,7 +12,7 @@ import org.apache.log4j.Logger
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
 import org.scalatest.FunSuite
-import com.ayasdi.df._
+import com.ayasdi.bigdf._
 import org.scalatest.BeforeAndAfterAll
 import org.apache.spark.rdd.DoubleRDDFunctions
 import scala.reflect.runtime.universe._

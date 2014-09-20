@@ -3,7 +3,7 @@
  * @author mohit
  *  dataframe on spark
  */
-package com.ayasdi.df
+package com.ayasdi.bigdf
 
 import scala.reflect.runtime.{ universe => ru }
 

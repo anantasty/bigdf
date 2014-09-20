@@ -3,7 +3,7 @@
  * @author mohit
  *  dataframe on spark
  */
-package com.ayasdi.df
+package com.ayasdi.bigdf
 
 import org.apache.spark.rdd.DoubleRDDFunctions
 import org.apache.spark.rdd.RDD

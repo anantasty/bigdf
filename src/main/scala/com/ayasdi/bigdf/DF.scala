@@ -3,7 +3,7 @@
  * @author mohit
  *  dataframe on spark
  */
-package com.ayasdi.df
+package com.ayasdi.bigdf
 
 import scala.collection.mutable.HashMap
 import scala.util.Try
@@ -14,7 +14,7 @@ import org.apache.commons.csv._
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
 import scala.reflect.ClassTag
-import com.ayasdi.df.Preamble._
+import com.ayasdi.bigdf.Preamble._
 import scala.collection.JavaConversions
 
 /**
@@ -50,10 +50,10 @@ case class DF private (val sc: SparkContext,
      * columns are zip'd together to get rows
      */
     private def computeRows: RDD[Array[Any]] = {
-        val first = cols(colIndexToName(0)).rdd
-        val rest =  (1 until colIndexToName.size).toList.map { i => cols(colIndexToName(i)).rdd } 
-          
-        first.zip(rest)
+                val first = cols(colIndexToName(0)).rdd
+                val rest =  (1 until colIndexToName.size).toList.map { i => cols(colIndexToName(i)).rdd } 
+                  
+                first.zip(rest)
     }
     private var rowsRddCached: RDD[Array[Any]] = null
     def rowsRdd = {
@@ -77,7 +77,7 @@ case class DF private (val sc: SparkContext,
         }
         i
     }
-    
+
     /*
      * add column keys, returns number of columns added
      */
@@ -295,10 +295,10 @@ object DF {
      */
     def apply(sc: SparkContext, inFile: String, separator: Char) = {
         val df = new DF(sc, new HashMap[String, Column[Any]], new HashMap[Int, String])
-
+        val csvFormat = CSVFormat.DEFAULT.withDelimiter(separator)
         val file = sc.textFile(inFile)
         val firstLine = file.first
-        val header = CSVParser.parse(firstLine, CSVFormat.DEFAULT).iterator.next
+        val header = CSVParser.parse(firstLine, csvFormat).iterator.next
         println(s"Found ${header.size} columns")
         df.addHeader(JavaConversions.asScalaIterator(header.iterator))
 
@@ -316,8 +316,9 @@ object DF {
          * CSVParser is not serializable, so create one on worker
          * Use mapPartitions to do that only once per partition
          */
+        val rows = dataLines.map { CSVParser.parse(_, csvFormat).iterator.next }
         val columns = for (i <- 0 until df.numCols) yield {
-            dataLines.map { line => CSVParser.parse(line, CSVFormat.DEFAULT).iterator.next.get(i) }
+            rows.map{ _.get(i) }
         }
 
         var i = 0
@@ -453,7 +454,7 @@ object DF {
                     null
                 }
                 println(s"Column: ${curDf.colIndexToName(origIndex)} \t\t\tType: ${t}")
-                
+
                 df.colIndexToName(joinedIndex) = newColName
             }
         }
