@@ -1,29 +1,24 @@
 What is this?
 =============
-A lot of data scientists use the python library pandas for quick exploration of data. The most useful construct in pandas (based on R, I think) is the dataframe, which is a 2D array(aka matrix) with the option to “name” the columns (and rows). But pandas is not distributed, so there is a limit on the data size that can be explored.
-Spark is a great map-reduce like framework that can handle very big data by using a shared nothing cluster of machines.
-This work is an attempt to provide a pandas-like DSL on top of spark, so that data scientists familiar with pandas have a very gradual learning curve.
+Dataframe is a very useful construct for data scientists.
+http://pandas.pydata.org/pandas-docs/stable/generated/pandas.DataFrame.html
+http://www.r-tutor.com/r-introduction/data-frame
+R and Pandas dataframes cannot handle big data because they are not distributed. bigdf is a dataframe on top of Apache Spark that can handle big data. It is written as an internal Scala DSL with the look and feel of Pandas to make it easier for those familiar with Pandas to use it.
 
 A gentle introduction is here:
 http://www.slideshare.net/codeninja4086/df-38948475?utm_source=slideshow03&utm_medium=ssemail&utm_campaign=iupload_share_slideshow
 
-How does it work?
-=================
-A dataframe contains a collection of columns that are indexed by “names” given to them and also by an integer. 
-The “IDE” is the Scala REPL. Because Scala has some nice constructs that enable creating (internal)DSLs, no parser and/or interpreter is needed. An added benefit is that constructs not supported by the DSL can be written in Scala in the same environment and DSL and non-DSL code can be mixed arbitrarily.
-If you are new to Scala, it is easy to get started: 
-  http://ampcamp.berkeley.edu/big-data-mini-course/introduction-to-the-scala-shell.html
 
 How to get it?
 ==============
-- Get Spark from https://spark.apache.org/
-- clone this repo
-- copy spark assembly jar to df/lib [you may add an SBT dependency but you have to make sure your spark cluster runs the same spark version as the one you are linking df to]
+- Get Spark from https://github.com/AyasdiOpenSource/spark [A minor patch is needed on Spark to make bigdf more efficient. A pull request has been submitted and when it is merged you can use regular Spark distribution] 
+- clone the bigdf repo
+- copy spark assembly jar(after bulding it) to bigdf/lib
 - sbt update
 - sbt package
 - sbt test, if you want to run some unit tests. you can skip this step
-- /path/to/spark/bin/spark-shell --jars /path/to/df/target/scala-2.10/df_2.10-0.1.jar 
-- https://github.com/AyasdiOpenSource/df/wiki/ for examples
+- /path/to/spark/bin/spark-shell --jars /path/to/bigdf/target/scala-2.10/bigdf_2.10-0.1.jar 
+- https://github.com/AyasdiOpenSource/bigdf/wiki/ for examples
 - Look at DFTest.scala for usage [a simple example is shown below]
 
 
