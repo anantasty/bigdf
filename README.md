@@ -1,8 +1,11 @@
 What is this?
 =============
 Dataframe is a very useful construct for data scientists.
+
 http://pandas.pydata.org/pandas-docs/stable/generated/pandas.DataFrame.html
+
 http://www.r-tutor.com/r-introduction/data-frame
+
 R and Pandas dataframes cannot handle big data because they are not distributed. bigdf is a dataframe on top of Apache Spark that can handle big data. It is written as an internal Scala DSL with the look and feel of Pandas to make it easier for those familiar with Pandas to use it.
 
 A gentle introduction is here:
