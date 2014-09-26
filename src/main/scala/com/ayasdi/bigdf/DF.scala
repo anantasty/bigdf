@@ -50,10 +50,10 @@ case class DF private (val sc: SparkContext,
      * columns are zip'd together to get rows
      */
     private def computeRows: RDD[Array[Any]] = {
-                val first = cols(colIndexToName(0)).rdd
-                val rest =  (1 until colIndexToName.size).toList.map { i => cols(colIndexToName(i)).rdd } 
-                  
-                first.zip(rest)
+        val first = cols(colIndexToName(0)).rdd
+        val rest =  (1 until colIndexToName.size).toList.map { i => cols(colIndexToName(i)).rdd } 
+          
+        first.zip(rest)
     }
     private var rowsRddCached: RDD[Array[Any]] = null
     def rowsRdd = {

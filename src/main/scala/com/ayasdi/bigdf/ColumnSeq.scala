@@ -25,15 +25,10 @@ case class ColumnSeq(val cols: Seq[(String, Column[Any])]) {
     }
     
     private def computePartialRows: RDD[Array[Any]] = {
-        var acc: RDD[List[Any]] = {
-            cols(0)._2.rdd
-     
-        }.map { List(_) }
-        for ((colName, col) <- cols.tail) {
-            acc = 
-                acc.zip(col.rdd).map { case (l, r) => r :: l }
-        }
-        acc.map { _.reverse.toArray }
+      val first = cols(0)._2.rdd
+      val rest = cols.tail.map { _._2.rdd }
+
+      first.zip(rest)
     }
     
     def map[U: ClassTag](mapper: Array[Any] => U): Column[Any] = {
