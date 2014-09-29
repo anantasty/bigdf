@@ -22,3 +22,38 @@ resolvers ++= Seq(
             "Sonatype Snapshots" at "https://oss.sonatype.org/content/repositories/releases/"
 )
 
+publishMavenStyle := true
+
+
+publishTo := {
+  val nexus = "https://oss.sonatype.org/"
+  if (isSnapshot.value)
+    Some("snapshots" at nexus + "content/repositories/snapshots")
+  else
+    Some("releases"  at nexus + "service/local/staging/deploy/maven2")
+}
+
+publishArtifact in Test := false
+
+pomExtra := (
+  <url>https://github.com/AyasdiOpenSource/bigdf</url>
+  <licenses>
+    <license>
+      <name>Apache 2.0</name>
+      <url>http://www.apache.org/licenses/</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+  <scm>
+    <url>https://github.com/AyasdiOpenSource/bigdf.git</url>
+    <connection>scm:git:git@github.com/AyasdiOpenSource/bigdf.git</connection>
+  </scm>
+  <developers>
+    <developer>
+      <id>mohitjaggi</id>
+      <name>Mohit Jaggi</name>
+      <url>http://ayasdi.com</url>
+    </developer>
+  </developers>)
+
+

@@ -94,6 +94,7 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA 
      * replace NaN with another number
      */
     def fillNA(value: Double) {
+        cachedStats = null
         if (tpe == ru.typeOf[Double]) {
             val col = this.asInstanceOf[Column[Double]]
             rdd = col.rdd.map { cell => if (cell.isNaN) value else cell }.asInstanceOf[RDD[T]]

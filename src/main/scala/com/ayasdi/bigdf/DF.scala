@@ -312,10 +312,6 @@ object DF {
                 ColumnType.Double
         }
 
-        /*
-         * CSVParser is not serializable, so create one on worker
-         * Use mapPartitions to do that only once per partition
-         */
         val rows = dataLines.map { CSVParser.parse(_, csvFormat).iterator.next }
         val columns = for (i <- 0 until df.numCols) yield {
             rows.map{ _.get(i) }
@@ -330,6 +326,7 @@ object DF {
             else
                 df.cols.put(df.colIndexToName(i), new Column[String](col, i, 0))
             i += 1
+            col.cache
         }
         df
     }
