@@ -36,9 +36,9 @@ case class ColumnSeq(val cols: Seq[(String, Column[Any])]) {
         val partialRows = computePartialRows
         val mapped = partialRows.map { row => mapper(row) }
         if(tpe == classTag[Double])
-        	new Column[Double](mapped.asInstanceOf[RDD[Double]], -1, 0).asInstanceOf[Column[Any]]
+        	Column(mapped.asInstanceOf[RDD[Double]]).asInstanceOf[Column[Any]]
         else if(tpe == classTag[String])
-            new Column[String](mapped.asInstanceOf[RDD[String]], -1, 0).asInstanceOf[Column[Any]]
+            Column(mapped.asInstanceOf[RDD[String]]).asInstanceOf[Column[Any]]
         else
             null
     }

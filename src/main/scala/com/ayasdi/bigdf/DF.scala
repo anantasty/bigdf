@@ -248,6 +248,42 @@ case class DF private (val sc: SparkContext,
     }
 
     /**
+     * pivot the df and return a new df
+     * e.g. half-yearly sales in <salesperson, period H1 or H2, sales> format
+     * Jack, H1, 20
+     * Jack, H2, 21
+     * Jill, H1, 30
+     * becomes "pivoted" to <salesperson, H1 sales, H2 sales>
+     * Jack, 20, 21
+     * Jill, 30, NaN
+     * 
+     * The resulting df will typically have much fewer rows and much more columns
+     * 
+     * keyCol: column that has "primary key" for the pivoted df e.g. salesperson
+     * pivotByCol: column that is being removed e.g. period
+     * pivotedCols: columns that are being pivoted e.g. sales, by default all columns are pivoted
+     */
+    def pivot(keyCol: String, pivotByCol: String, pivotedCols: List[Int] = cols.values.map { _.index }.toList): DF = {
+        val grped = groupBy(keyCol)
+        val pivotValues = apply(pivotByCol).distinct.collect.asInstanceOf[Array[Double]]
+        val pivotIndex = cols.getOrElse(pivotByCol, null).index
+        val newDf =  new DF(sc,  new HashMap[String, Column[Any]], new HashMap[Int, String])
+        pivotValues.foreach { pivotValue =>
+            val grpSplit = new PivotHelper(grped, pivotIndex, pivotValue).get
+//            val grpSplit = grped.map { case (k,v) => 
+//                (k, v.filter { row => row(pivotIndex) == pivotValue } ) 
+//            }
+            pivotedCols.foreach { pivotedColIndex =>
+	            val newColRdd = grpSplit.map { case (k,v) => 
+	                if(v.isEmpty) Double.NaN else v.head(pivotedColIndex) 
+	            }.asInstanceOf[RDD[Double]]
+	            newDf.update(s"${colIndexToName(pivotedColIndex)}$pivotByCol==$pivotValue", Column(newColRdd))
+            }
+        }
+        newDf
+    }
+    
+    /**
      * print brief description of the DF
      */
     def describe() {
@@ -268,10 +304,10 @@ case class DF private (val sc: SparkContext,
                 val t = DF.getType(firstRow(i))
                 val column = if (t == ColumnType.Double) {
                     val colRdd = filteredRows.map { row => row(i).asInstanceOf[Double] }
-                    df.cols.put(df.colIndexToName(i), new Column[Double](colRdd, i, 0))
+                    df.cols.put(df.colIndexToName(i), Column(colRdd, i))
                 } else if (t == ColumnType.String) {
                     val colRdd = filteredRows.map { row => row(i).asInstanceOf[String] }
-                    df.cols.put(df.colIndexToName(i), new Column[String](colRdd, i, 0))
+                    df.cols.put(df.colIndexToName(i), Column(colRdd, i))
                 } else {
                     println(s"Could not determine type of column ${colIndexToName(i)}")
                     null
@@ -322,9 +358,9 @@ object DF {
             val t = guessType(columns(i))
             println(s"Column: ${df.colIndexToName(i)} \t\t\tGuessed Type: ${t}")
             if (t == ColumnType.Double)
-                df.cols.put(df.colIndexToName(i), Column(col, i))
+                df.cols.put(df.colIndexToName(i), Column.asDoubles(col, i))
             else
-                df.cols.put(df.colIndexToName(i), new Column[String](col, i, 0))
+                df.cols.put(df.colIndexToName(i), Column(col, i))
             i += 1
             col.cache
         }
@@ -344,12 +380,12 @@ object DF {
                 case c: Double =>
                     println(s"Column: ${df.colIndexToName(i)} Type: Double")
                     df.cols.put(df.colIndexToName(i),
-                        new Column[Double](sc.parallelize(col.asInstanceOf[Vector[Double]]), i, 0))
+                        Column(sc.parallelize(col.asInstanceOf[Vector[Double]]), i))
 
                 case c: String =>
                     println(s"Column: ${df.colIndexToName(i)} Type: String")
                     df.cols.put(df.colIndexToName(i),
-                        new Column[String](sc.parallelize(col.asInstanceOf[Vector[String]]), i, 0))
+                        Column(sc.parallelize(col.asInstanceOf[Vector[String]]), i))
             }
             i += 1
         }
@@ -440,11 +476,11 @@ object DF {
                 val t = getType(partGetter(firstRow)(origIndex))
                 if (t == ColumnType.Double) {
                     val colRdd = joinedRows.map { row => partGetter(row)(origIndex).asInstanceOf[Double] }
-                    val column = new Column[Double](colRdd, joinedIndex, 0)
+                    val column = Column(colRdd, joinedIndex)
                     df.cols.put(newColName, column)
                 } else if (t == ColumnType.String) {
                     val colRdd = joinedRows.map { row => partGetter(row)(origIndex).asInstanceOf[String] }
-                    val column = new Column[String](colRdd, joinedIndex, 0)
+                    val column = Column(colRdd, joinedIndex)
                     df.cols.put(newColName, column)
                 } else {
                     println(s"Could not determine type of column ${left.colIndexToName(origIndex)}")
