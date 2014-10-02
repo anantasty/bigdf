@@ -1,7 +1,7 @@
 /* Ayasdi Inc. Copyright 2014 - all rights reserved. */
 /**
  * @author mohit
- *  dataframe on spark
+ *  big dataframe on spark
  */
 package com.ayasdi.bigdf
 
@@ -16,6 +16,8 @@ import scala.reflect.runtime.universe._
 import scala.reflect.ClassTag
 import com.ayasdi.bigdf.Preamble._
 import scala.collection.JavaConversions
+import scala.reflect.{ ClassTag, classTag }
+import scala.reflect.runtime.{ universe => ru }
 
 /**
  * types of joins
@@ -34,16 +36,16 @@ object ColumnType extends Enumeration {
  * Data Frame is a map of column key to an RDD containing that column
  * constructor is private, instances are created by factory calls(apply) in 
  * companion object
- * Rows and Columns are mutable: They can be appended, deleted, replaced
+ * Number of rows cannot change. Columns can be added, removed, mutated
  */
 case class DF private (val sc: SparkContext,
-                       val cols: HashMap[String, Column[Any]], //column key -> column r, 
-                       val colIndexToName: HashMap[Int, String]) { //column serial number -> column key {
+                       val cols: HashMap[String, Column[Any]] = new HashMap[String, Column[Any]],
+                       val colIndexToName: HashMap[Int, String] = new HashMap[Int, String]) {
     def numCols = cols.size
-    def numRows = if (cols.head._2 == null) 0 else cols.head._2.rdd.count
+    lazy val numRows = if (cols.head._2 == null) 0 else cols.head._2.rdd.count
 
     override def toString() = {
-        "Silence is golden"
+        "Silence is golden" //otherwise prints too much stuff
     }
 
     /*
@@ -51,9 +53,12 @@ case class DF private (val sc: SparkContext,
      */
     private def computeRows: RDD[Array[Any]] = {
         val first = cols(colIndexToName(0)).rdd
-        val rest =  (1 until colIndexToName.size).toList.map { i => cols(colIndexToName(i)).rdd } 
-          
-        first.zip(rest)
+        val rest = (1 until colIndexToName.size).toList.map { i => cols(colIndexToName(i)).rdd }
+
+        //if you get a compile error here, you have the wrong spark
+        //get my forked version or patch yours from my pull request
+        //https://github.com/apache/spark/pull/2429  
+        first.zip(rest) //if you get a compile error here, you have the wrong spark
     }
     private var rowsRddCached: RDD[Array[Any]] = null
     def rowsRdd = {
@@ -68,20 +73,14 @@ case class DF private (val sc: SparkContext,
     /*
      * add column keys, returns number of columns added
      */
-    def addHeader(header: Array[String]) = {
-        var i = 0
-        header.foreach { colName =>
-            cols.put(colName, null)
-            colIndexToName.put(i, colName)
-            i += 1
-        }
-        i
+    private def addHeader(header: Array[String]): Int = {
+        addHeader(header.iterator)
     }
 
     /*
      * add column keys, returns number of columns added
      */
-    def addHeader(header: Iterator[String]) = {
+    private def addHeader(header: Iterator[String]) = {
         var i = 0
         header.foreach { colName =>
             cols.put(colName, null)
@@ -94,20 +93,20 @@ case class DF private (val sc: SparkContext,
     /**
      * get a column identified by name
      */
-    def apply(colName: String) = {
-        rowsRddCached = null //FIXME: can be optimized
-
+    def column(colName: String) = {
         val col = cols.getOrElse(colName, null)
         if (col == null) println(s"Hmm...didn't find that column ${colName}. Do you need a spellchecker?")
         col
     }
-
+    /**
+     * get a column identified by name
+     */
+    def apply(colName: String) = column(colName)
+    
     /**
      * get multiple columns identified by name
      */
-    def apply(colNames: String*) = {
-        rowsRddCached = null //FIXME: can be optimized
-
+    def columnsByNames(colNames: Seq[String]) = {
         val selectedCols = for (colName <- colNames)
             yield (colName, cols.getOrElse(colName, null))
         if (selectedCols.exists(_._2 == null)) {
@@ -123,9 +122,7 @@ case class DF private (val sc: SparkContext,
      * get columns with numeric index
      * FIXME: solo has to be "5 to 5" for now, should be just "5"
      */
-    def apply(indexRanges: List[Range]) = {
-        rowsRddCached = null //FIXME: can be optimized
-
+    def columnsByRanges(indexRanges: Seq[Range]) = {
         val selectedCols = for (
             indexRange <- indexRanges;
             index <- indexRange;
@@ -134,7 +131,24 @@ case class DF private (val sc: SparkContext,
 
         new ColumnSeq(selectedCols)
     }
-
+    
+    /**
+     * get columns with numeric index
+     * FIXME: solo has to be "5 to 5" for now, should be just "5"
+     */
+    def columnsByIndexes(indexes: Seq[Int]) = {
+        val indexRanges = indexes.map { i => i to i }
+        columnsByRanges(indexRanges)
+    }
+    
+    def apply[T: ru.TypeTag](items: T*): ColumnSeq = {
+        val tpe = ru.typeOf[T]
+        if(tpe =:= ru.typeOf[Int]) columnsByIndexes(items.asInstanceOf[Seq[Int]])
+        else if(tpe =:= ru.typeOf[String]) columnsByNames(items.asInstanceOf[Seq[String]])
+        else if(tpe =:= ru.typeOf[Range] || tpe =:= ru.typeOf[Range.Inclusive]) columnsByRanges(items.asInstanceOf[Seq[Range]])
+        else { println("got " + tpe); null }
+    }
+    
     private def filter(cond: Condition) = {
         rowsRdd.filter(row => cond.check(row))
     }
@@ -195,6 +209,7 @@ case class DF private (val sc: SparkContext,
      * number of rows that have NA(NaN or empty string)
      */
     def countRowsWithNA = {
+        rowsRddCached = null //fillNA could have mutated columns, recalculate rows
         val x = rowsRdd.map { row => if (DFUtils.countNaN(row) > 0) 1 else 0 }
         x.reduce { _ + _ }
     }
@@ -256,9 +271,9 @@ case class DF private (val sc: SparkContext,
      * becomes "pivoted" to <salesperson, H1 sales, H2 sales>
      * Jack, 20, 21
      * Jill, 30, NaN
-     * 
+     *
      * The resulting df will typically have much fewer rows and much more columns
-     * 
+     *
      * keyCol: column that has "primary key" for the pivoted df e.g. salesperson
      * pivotByCol: column that is being removed e.g. period
      * pivotedCols: columns that are being pivoted e.g. sales, by default all columns are pivoted
@@ -267,22 +282,23 @@ case class DF private (val sc: SparkContext,
         val grped = groupBy(keyCol)
         val pivotValues = apply(pivotByCol).distinct.collect.asInstanceOf[Array[Double]]
         val pivotIndex = cols.getOrElse(pivotByCol, null).index
-        val newDf =  new DF(sc,  new HashMap[String, Column[Any]], new HashMap[Int, String])
+        val newDf = new DF(sc, new HashMap[String, Column[Any]], new HashMap[Int, String])
         pivotValues.foreach { pivotValue =>
             val grpSplit = new PivotHelper(grped, pivotIndex, pivotValue).get
-//            val grpSplit = grped.map { case (k,v) => 
-//                (k, v.filter { row => row(pivotIndex) == pivotValue } ) 
-//            }
+            //            val grpSplit = grped.map { case (k,v) => 
+            //                (k, v.filter { row => row(pivotIndex) == pivotValue } ) 
+            //            }
             pivotedCols.foreach { pivotedColIndex =>
-	            val newColRdd = grpSplit.map { case (k,v) => 
-	                if(v.isEmpty) Double.NaN else v.head(pivotedColIndex) 
-	            }.asInstanceOf[RDD[Double]]
-	            newDf.update(s"${colIndexToName(pivotedColIndex)}$pivotByCol==$pivotValue", Column(newColRdd))
+                val newColRdd = grpSplit.map {
+                    case (k, v) =>
+                        if (v.isEmpty) Double.NaN else v.head(pivotedColIndex)
+                }.asInstanceOf[RDD[Double]]
+                newDf.update(s"${colIndexToName(pivotedColIndex)}$pivotByCol==$pivotValue", Column(newColRdd))
             }
         }
         newDf
     }
-    
+
     /**
      * print brief description of the DF
      */
@@ -350,7 +366,7 @@ object DF {
 
         val rows = dataLines.map { CSVParser.parse(_, csvFormat).iterator.next }
         val columns = for (i <- 0 until df.numCols) yield {
-            rows.map{ _.get(i) }
+            rows.map { _.get(i) }
         }
 
         var i = 0

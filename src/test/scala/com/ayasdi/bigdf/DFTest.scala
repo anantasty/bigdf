@@ -100,10 +100,10 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
 
     test("Column Index: Slices") {
         val df = makeDF
-        val colSeq1 = df(List(0 to 0))
+        val colSeq1 = df(0)
         assert(colSeq1.cols.length === 1)
         assert((colSeq1.cols(0)._2 eq df("a")) === true)
-        val colSeq2 = df(List(0 to 0, 1 to 3))
+        val colSeq2 = df(0 to 0, 1 to 3)
         assert(colSeq2.cols.length === 4)
         assert((colSeq2.cols(0)._2 eq df("a")) === true)
         assert((colSeq2.cols(1)._2 eq df("b")) === true)
