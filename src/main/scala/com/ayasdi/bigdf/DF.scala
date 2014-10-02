@@ -18,6 +18,7 @@ import com.ayasdi.bigdf.Preamble._
 import scala.collection.JavaConversions
 import scala.reflect.{ ClassTag, classTag }
 import scala.reflect.runtime.{ universe => ru }
+import scala.util.Random
 
 /**
  * types of joins
@@ -141,6 +142,13 @@ case class DF private (val sc: SparkContext,
         columnsByRanges(indexRanges)
     }
     
+    /**
+     * get multiple columns by name, indices or index ranges
+     * e.g. myDF("x", "y")
+     * or   myDF(0, 1, 6)
+     * or   myDF(0 to 0, 4 to 10, 6 to 1000)
+     * Cannot mix and match for now
+     */
     def apply[T: ru.TypeTag](items: T*): ColumnSeq = {
         val tpe = ru.typeOf[T]
         if(tpe =:= ru.typeOf[Int]) columnsByIndexes(items.asInstanceOf[Seq[Int]])
@@ -149,14 +157,26 @@ case class DF private (val sc: SparkContext,
         else { println("got " + tpe); null }
     }
     
-    private def filter(cond: Condition) = {
+    /*
+     * usually more efficient if there are a few columns
+     */
+    private def filterRowStrategy(cond: Condition) = {
         rowsRdd.filter(row => cond.check(row))
     }
+    
+    /*
+     * more efficient if there are a lot of columns
+     * FIXME: write this code
+     */
+    private def filterColumnStrategy(cond: Condition) = {
+        ???
+    }
+    
     /**
      * wrapper on filter to create a new DF from filtered RDD
      */
     def where(cond: Condition): DF = {
-        val filteredRows = filter(cond)
+        val filteredRows = filterRowStrategy(cond)
         fromRows(filteredRows)
     }
 
@@ -357,9 +377,13 @@ object DF {
         val dataLines = file.filter(_ != firstLine)
 
         def guessType(col: RDD[String]) = {
-            val first = col.first
-            if (Try { first.toDouble }.toOption == None)
-                ColumnType.String
+            val samples = col.sample(false, 0.01, (new Random).nextLong)
+            val parseFailCount = samples.filter { str =>
+            	Try { str.toDouble }.toOption == None
+            }.count
+               
+            if(parseFailCount > 0)
+            	ColumnType.String
             else
                 ColumnType.Double
         }
@@ -387,6 +411,10 @@ object DF {
      * create a DF given column names and vectors of columns(not rows)
      */
     def apply(sc: SparkContext, header: Vector[String], vec: Vector[Vector[Any]]) = {
+        require(header.length == vec.length)
+        require(vec.map{ _.length }.toSet.size == 1)
+        
+        
         val df = new DF(sc, new HashMap[String, Column[Any]], new HashMap[Int, String])
         df.addHeader(header.toArray)
 
