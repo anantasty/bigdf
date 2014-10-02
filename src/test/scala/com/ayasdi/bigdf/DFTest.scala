@@ -64,7 +64,9 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
     }
 
     test("Construct: DF from CSV file") {
-        //FIXME
+        val df = DF(sc, "src/test/resources/pivot.csv", ',')
+        assert(df.numCols === 4)
+        assert(df.numRows === 4)
     }
 
     test("Column Index: Refer to a column of a DF") {
@@ -217,7 +219,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         val df = makeDF
         val aa = df("a").number.first
         val bb = df("b").number.first
-        
+
         df("new") = df("a") + df("b")
         assert(df("new").number.first === aa + bb)
         df("new") = df("a") - df("b")
@@ -233,10 +235,10 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         df("new") = df("a", "b").map(TestFunctions.summer)
         assert(df("new").number.first === 21 + 11)
     }
-    
+
     test("Aggregate") {
         val df = makeDF
-        df("groupByThis") = df("a").map{ x => 1.0 }
+        df("groupByThis") = df("a").map { x => 1.0 }
         val sumOfA = df.aggregate("groupByThis", "a", AggSimple)
         assert(sumOfA.first._2 === df("a").number.sum)
         val arrOfA = df.aggregate("groupByThis", "a", AggCustom)
@@ -245,12 +247,12 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
 }
 
 object AggSimple extends Aggregator[Double] {
-	def aggregate(a: Double, b: Double) = a + b
+    def aggregate(a: Double, b: Double) = a + b
 }
 
 object AggCustom extends Aggregator[Array[Double]] {
-    override def convert(a: Array[Any]): Array[Double] =  { Array(a(colIndex).asInstanceOf[Double]) }
-	def aggregate(a: Array[Double], b: Array[Double]) = a ++ b
+    override def convert(a: Array[Any]): Array[Double] = { Array(a(colIndex).asInstanceOf[Double]) }
+    def aggregate(a: Array[Double], b: Array[Double]) = a ++ b
 }
 
 case object TestFunctions {
