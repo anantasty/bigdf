@@ -16,6 +16,7 @@ import com.ayasdi.bigdf._
 import org.scalatest.BeforeAndAfterAll
 import org.apache.spark.rdd.DoubleRDDFunctions
 import scala.reflect.runtime.universe._
+import org.apache.spark.SparkConf
 
 class DFTest extends FunSuite with BeforeAndAfterAll {
     var sc: SparkContext = _
@@ -57,6 +58,10 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         DF(sc, h, v)
     }
 
+    private def makeDFFromCSVFile(file: String) = {
+        DF(sc, file, ',')
+    }
+
     test("Construct: DF from Vector") {
         val df = makeDF
         assert(df.numCols === 4)
@@ -64,7 +69,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
     }
 
     test("Construct: DF from CSV file") {
-        val df = DF(sc, "src/test/resources/pivot.csv", ',')
+        val df = makeDFFromCSVFile("src/test/resources/pivot.csv")
         assert(df.numCols === 4)
         assert(df.numRows === 4)
     }
@@ -129,14 +134,8 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
     }
 
     test("Parsing: Parse doubles") {
-        val h = Vector("a", "b", "c", "Date")
-        val v = Vector(Vector("11.0", "12.0a", "13.0b"), //guess as double but string later
-            Vector(21.0, 22.0, 23.0),
-            Vector(31.0, 32.0, 33.0),
-            Vector(1.36074391383E12, 1.360616948975E12, 1.36055080601E12))
-        val df = DF(sc, h, v)
-        //FIXME: this should work for file input
-        //assert(df("a").parseErrors === 2)
+        val df = makeDFFromCSVFile("src/test/resources/mixedDoubles.csv")
+        assert(df("Feature1").parseErrors === 1)
     }
 
     test("Filter/Select: Double Column comparisons with Scalar") {
@@ -243,6 +242,26 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         assert(sumOfA.first._2 === df("a").number.sum)
         val arrOfA = df.aggregate("groupByThis", "a", AggCustom)
         assert(arrOfA.first._2 === Array(11.0, 12.0, 13.0))
+    }
+
+    test("Pivot") {
+        val df = makeDFFromCSVFile("src/test/resources/pivot.csv")
+        val df2 = df.pivot("Customer", "Period")
+        df2.describe
+        df2.list
+    }
+}
+
+class DFTestWithKryo extends DFTest {
+    override def beforeAll {
+        SparkUtil.silenceSpark
+        System.clearProperty("spark.master.port")
+
+        var conf = new SparkConf()
+            .setMaster("local[4]")
+            .setAppName("DFTestWithKryo")
+            .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+        sc = new SparkContext(conf)
     }
 }
 

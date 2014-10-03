@@ -10,6 +10,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.util.StatCounter
 import scala.reflect.{ ClassTag, classTag }
 import scala.reflect.runtime.{ universe => ru }
+import org.apache.spark.SparkContext
 
 object Preamble {
     implicit def toColumnAny[T](col: Column[T]) = { col.asInstanceOf[Column[Any]] }
@@ -42,6 +43,26 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates only due t
             println(s"\tmax:${stats.max}\n\tmin:${stats.min}\n\tcount:${stats.count}\n\tsum:${stats.sum}\n")
             println(s"\tmean:${stats.mean}\n\tvariance(sample):${stats.sampleVariance}\n\tstddev(sample):${stats.sampleStdev}\n")
             println(s"\tvariance:${stats.variance}\n\tstddev:${stats.stdev}")
+        }
+    }
+    
+    /**
+     * print upto 10 elements
+     */
+    def list {
+        println("Count: $count")
+        if (tpe =:= ru.typeOf[Double]) {
+            if(count <= 10)
+            	number.collect.foreach { println _ }
+            else
+                number.take(10).foreach { println _ }
+        } else if (tpe =:= ru.typeOf[Double]) {
+            if(count <= 10)
+            	string.collect.foreach { println _ }
+            else
+                string.take(10).foreach { println _ }
+        } else {
+            println("Wrong type!")
         }
     }
 
@@ -489,8 +510,9 @@ case object StringOps {
 }
 
 object Column {
-    def asDoubles(stringRdd: RDD[String], index: Int) = {
+    def asDoubles(sc: SparkContext, stringRdd: RDD[String], index: Int) = {
         var parseErrors = 0L
+        // var parseErrors = sc.accumulator(0L)
         val doubleRdd = stringRdd map { x =>
             var y = Double.NaN
             try {
