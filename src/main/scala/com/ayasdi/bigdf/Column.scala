@@ -11,6 +11,7 @@ import org.apache.spark.util.StatCounter
 import scala.reflect.{ ClassTag, classTag }
 import scala.reflect.runtime.{ universe => ru }
 import org.apache.spark.SparkContext
+import org.apache.spark.SparkContext._
 
 object Preamble {
     implicit def toColumnAny[T](col: Column[T]) = { col.asInstanceOf[Column[Any]] }
@@ -511,8 +512,7 @@ case object StringOps {
 
 object Column {
     def asDoubles(sc: SparkContext, stringRdd: RDD[String], index: Int) = {
-        var parseErrors = 0L
-        // var parseErrors = sc.accumulator(0L)
+        val parseErrors = sc.accumulator(0L)
         val doubleRdd = stringRdd map { x =>
             var y = Double.NaN
             try {
@@ -522,7 +522,8 @@ object Column {
             }
             y
         }
-        new Column[Double](doubleRdd, index, parseErrors)
+        doubleRdd.foreach { x: Double => {} } //to trigger accumulation of parseErrors
+        new Column[Double](doubleRdd, index, parseErrors.value)
     }
 
     /**
