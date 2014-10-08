@@ -392,7 +392,12 @@ object DF {
 
         val dataLines = file.filter(_ != firstLine)
 
-        def guessType(col: RDD[String]) = {
+        /*
+         * guess the type of a column by looking at a random sample
+         * however, this is slow because spark will cause all data to be
+         * materialized before it can be sampled
+         */
+        def guessType2(col: RDD[String]) = {
             val samples = col.sample(false, 0.01, (new Random).nextLong)
                 .union(sc.parallelize(List(col.first)))
             val parseFailCount = samples.filter { str =>
@@ -405,6 +410,26 @@ object DF {
                 ColumnType.Double
         }
 
+        /*
+         * guess the type of a column by looking at the first element
+         * in every partition. faster than random sampling method
+         */
+        def guessType(col: RDD[String]) = {
+            val parseErrors = sc.accumulator(0)
+            col.foreachPartition { str =>	
+                try {
+                    val y = if(str.hasNext) str.next.toDouble else 0
+                } catch {
+                    case _: java.lang.NumberFormatException => parseErrors += 1
+                }
+
+            }
+            if(parseErrors.value > 0)
+                ColumnType.String
+            else
+                ColumnType.Double
+        }
+        
         val rows = dataLines.map { CSVParser.parse(_, csvFormat).iterator.next }
         val columns = for (i <- 0 until df.numCols) yield {
             rows.map { _.get(i) }
