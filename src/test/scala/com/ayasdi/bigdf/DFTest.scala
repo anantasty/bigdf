@@ -49,6 +49,15 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         DF(sc, h, v)
     }
 
+    private def makeDFWithNulls = {
+        val h = Vector("a", "b", "c", "Date")
+        val v = Vector(Vector(-1, 12.0, 13.0),
+            Vector("b1", "NULL", "b3"),
+            Vector(31.0, 32.0, 33.0),
+            Vector(1.36074391383E12, 1.360616948975E12, 1.36055080601E12))
+        DF(sc, h, v)
+    }
+    
     private def makeDFWithString = {
         val h = Vector("a", "b", "c", "Date")
         val v = Vector(Vector("11.0", "12.0", "13.0"),
@@ -213,6 +222,15 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         df("b").fillNA("hi")
         assert(df.countRowsWithNA === 0)
     }
+    
+    test("NA: Marking a value as NA") {
+        val df = makeDFWithNulls
+        assert(df.countRowsWithNA === 0)
+        df("a").markNA(-1)
+        assert(df.countRowsWithNA === 1)
+        df("b").markNA("NULL")
+        assert(df.countRowsWithNA === 2)
+    }
 
     test("Column Ops: New column as simple function of existing ones") {
         val df = makeDF
@@ -249,6 +267,15 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         val df2 = df.pivot("Customer", "Period")
         df2.describe
         df2.list
+        assert(df2.numRows === 3)
+        assert(df2.numCols === 6)
+        val df3 = df2("S_Customer@Period==2.0").string.zip(df2("S_Customer@Period==1.0").string)
+        val bad = sc.accumulator(0)
+        df3.foreach { case (a, b) => 
+            if(!a.isEmpty && !b.isEmpty && a != b)
+                bad += 1
+        }
+        assert(bad.value === 0)
     }
 }
 

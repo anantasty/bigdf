@@ -46,20 +46,20 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates only due t
             println(s"\tvariance:${stats.variance}\n\tstddev:${stats.stdev}")
         }
     }
-    
+
     /**
      * print upto 10 elements
      */
     def list {
         println("Count: $count")
         if (tpe =:= ru.typeOf[Double]) {
-            if(count <= 10)
-            	number.collect.foreach { println _ }
+            if (count <= 10)
+                number.collect.foreach { println _ }
             else
                 number.take(10).foreach { println _ }
-        } else if (tpe =:= ru.typeOf[Double]) {
-            if(count <= 10)
-            	string.collect.foreach { println _ }
+        } else if (tpe =:= ru.typeOf[String]) {
+            if (count <= 10)
+                string.collect.foreach { println _ }
             else
                 string.take(10).foreach { println _ }
         } else {
@@ -100,13 +100,40 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates only due t
     def distinct = {
         rdd.distinct
     }
+    
     /**
-     * does the column have NA
+     * does the column have any NA
      */
     def hasNA = {
         countNA > 0
     }
-
+    
+    /**
+     * mark this value as NA
+     */
+    def markNA(naVal: Double) {
+        cachedStats = null
+        if (tpe == ru.typeOf[Double]) {
+            val col = this.asInstanceOf[Column[Double]]
+            rdd = col.rdd.map { cell => if (cell == naVal) Double.NaN else cell }.asInstanceOf[RDD[T]]
+        } else {
+            println("This is not a Double column")
+        }
+    }
+    
+    /**
+     * mark a string as NA: mutates the string to empty string
+     */
+    def markNA(naVal: String) {
+        cachedStats = null
+        if (tpe == ru.typeOf[String]) {
+            val col = this.asInstanceOf[Column[String]]
+            rdd = col.rdd.map { cell => if (cell == naVal) "" else cell }.asInstanceOf[RDD[T]]
+        } else {
+            println("This is not a String column")
+        }
+    }
+    
     /**
      * count the number of NAs
      */
@@ -126,6 +153,8 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates only due t
         if (tpe =:= ru.typeOf[Double]) {
             val col = this.asInstanceOf[Column[Double]]
             rdd = col.rdd.map { cell => if (cell.isNaN) value else cell }.asInstanceOf[RDD[T]]
+        } else {
+            println("This is not a Double column")
         }
     }
     /**
@@ -136,6 +165,8 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates only due t
         if (tpe =:= ru.typeOf[String]) {
             val col = this.asInstanceOf[Column[String]]
             rdd = col.rdd.map { cell => if (cell.isEmpty) value else cell }.asInstanceOf[RDD[T]]
+        } else {
+            println("This is not a String column")
         }
     }
 
@@ -240,6 +271,9 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates only due t
         else null
     }
 
+    /**
+     * generate a Column of boolean. true if this column is greater than another
+     */
     def >>(that: Column[_]) = {
         if (tpe =:= ru.typeOf[Double] && that.tpe =:= ru.typeOf[Double])
             ColumnOfDoublesOps.withColumnOfDoubles(this.asInstanceOf[Column[Double]], that.asInstanceOf[Column[Double]], DoubleOps.gt)

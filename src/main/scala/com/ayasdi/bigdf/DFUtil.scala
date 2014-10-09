@@ -23,12 +23,19 @@ object DFUtils {
 
 case class PivotHelper(grped: RDD[(Any, Iterable[Array[Any]])],
                        pivotIndex: Int,
-                       pivotValue: Double) {
+                       pivotValue: String) {
     def get = {
         grped.map {
             case (k, v) =>
-                (k, v.filter { row => row(pivotIndex) == pivotValue })
+                val vv = v.filter { row =>
+                    row(pivotIndex) match {
+                        case cellD: Double => cellD.toString == pivotValue
+                        case cellS: String => cellS == pivotValue
+                    }
+                }
+                (k, vv)
         }
+
     }
 }
 
@@ -43,7 +50,7 @@ abstract case class Aggregator[U] {
     def mergeCombiners(x: U, y: U): U = {
         aggregate(x, y)
     }
-    
+
     /*
      * user supplied aggregator
      */
