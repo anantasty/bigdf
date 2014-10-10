@@ -33,7 +33,7 @@ object ColumnType extends Enumeration {
     val String, Double = Value
 }
 
-/*
+/**
  * Data Frame is a map of column key to an RDD containing that column
  * constructor is private, instances are created by factory calls(apply) in 
  * companion object
