@@ -7,7 +7,7 @@ package com.ayasdi.bigdf
 
 import org.apache.spark.rdd.RDD
 
-object DFUtils {
+private[bigdf] object CountHelper {
     def countNaN(row: Array[Any]) = {
         var ret = 0
         for (col <- row) {
@@ -21,7 +21,10 @@ object DFUtils {
     }
 }
 
-case class PivotHelper(grped: RDD[(Any, Iterable[Array[Any]])],
+/*
+ * needed this to work around task serialization failure in spark
+ */
+private[bigdf] case class PivotHelper(grped: RDD[(Any, Iterable[Array[Any]])],
                        pivotIndex: Int,
                        pivotValue: String) {
     def get = {

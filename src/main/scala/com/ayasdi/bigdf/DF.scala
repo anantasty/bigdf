@@ -230,7 +230,7 @@ case class DF private (val sc: SparkContext,
      */
     def countRowsWithNA = {
         rowsRddCached = null //fillNA could have mutated columns, recalculate rows
-        val x = rowsRdd.map { row => if (DFUtils.countNaN(row) > 0) 1 else 0 }
+        val x = rowsRdd.map { row => if (CountHelper.countNaN(row) > 0) 1 else 0 }
         x.reduce { _ + _ }
     }
 
@@ -245,7 +245,7 @@ case class DF private (val sc: SparkContext,
      * create a new DF after removing all rows that had NAs(NaNs or empty strings)
      */
     def dropNA = {
-        val rows = rowsRdd.filter { row => DFUtils.countNaN(row) == 0 }
+        val rows = rowsRdd.filter { row => CountHelper.countNaN(row) == 0 }
         fromRows(rows)
     }
 
