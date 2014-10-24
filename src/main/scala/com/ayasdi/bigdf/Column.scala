@@ -15,10 +15,10 @@ import org.apache.spark.SparkContext._
 
 object Preamble {
     implicit def toColumnAny[T](col: Column[T]) = { col.asInstanceOf[Column[Any]] }
-    // implicit def toRdd[T](col: Column[T]) = { col.rdd }
+    implicit def toRdd[T](col: Column[T]) = { col.rdd }
 }
 
-case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates only due to fillNA */
+case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates due to fillNA, markNA */
                                           var index: Int, /* mutates when an orphan column is put in a DF */
                                           parseErrors: Long) {
     val tpe = ru.typeOf[T]
@@ -157,6 +157,7 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates only due t
             println("This is not a Double column")
         }
     }
+    
     /**
      * replace NA with another string
      */
@@ -559,7 +560,11 @@ object Column {
         doubleRdd.foreach { x: Double => {} } //to trigger accumulation of parseErrors
         new Column[Double](doubleRdd, index, parseErrors.value)
     }
-
+    
+    def asDoubles(sc: SparkContext, col: Column[String], index: Int): Column[Double] = {
+    	asDoubles(sc, col.rdd, index)
+    }
+    
     /**
      * create Column from existing RDD
      */
