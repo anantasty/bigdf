@@ -56,10 +56,9 @@ case class DoubleColumnWithDoubleColumnCondition(i: Int, j: Int,
         val elemRight = row(colIndexRight)
         (elemLeft, elemRight) match {
             case (l: Double, r: Double) => cmp(l, r)
-            case _                      => println(s"DoubleColumnCondition2 only likes Doubles"); false
+            case _                      => println(s"DoubleColumnWithDoubleColumnCondition only likes Doubles"); false
         }
     }
-
 }
 
 case class StringColumnWithStringScalarCondition(i: Int,
@@ -70,12 +69,9 @@ case class StringColumnWithStringScalarCondition(i: Int,
 case class StringColumnWithStringColumnCondition(i: Int, j: Int,
                                                  val cmp: (String, String) => Boolean) extends BinaryCondition(i, j) {
     def check(row: Array[Any]) = {
-        val elemLeft = row(colIndexLeft)
-        val elemRight = row(colIndexRight)
-        (elemLeft, elemRight) match {
-            case (l: String, r: String) => cmp(l, r)
-            case _                      => println(s"DoubleColumnCondition2 only likes Doubles"); false
-        }
+        val elemLeft = row(colIndexLeft).asInstanceOf[String]
+        val elemRight = row(colIndexRight).asInstanceOf[String]
+        cmp(elemLeft, elemRight)
     }
 }
 

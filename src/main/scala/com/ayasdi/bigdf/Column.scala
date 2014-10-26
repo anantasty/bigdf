@@ -10,35 +10,37 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.util.StatCounter
 import scala.reflect.{ ClassTag, classTag }
 import scala.reflect.runtime.{ universe => ru }
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkContext._
 
 object Preamble {
     implicit def toColumnAny[T](col: Column[T]) = { col.asInstanceOf[Column[Any]] }
-    // implicit def toRdd[T](col: Column[T]) = { col.rdd }
+    implicit def toRdd[T](col: Column[T]) = { col.rdd }
 }
 
-case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA */
-                                 var index: Int,  /* mutates when an orphan column is put in a DF */
-                                 parseErrors: Long) {
+case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates due to fillNA, markNA */
+                                          var index: Int, /* mutates when an orphan column is put in a DF */
+                                          parseErrors: Long) {
     val tpe = ru.typeOf[T]
 
     override def toString() = {
         val c = if (rdd != null) count else 0
         s"\ttype:${tpe}\n\tcount:${c}\n\tparseErrors:${parseErrors}"
-    }    
-    
+    }
+
     /**
      *  statistical information about this column
-     */ 
+     */
     var cachedStats: StatCounter = null
-    def stats = if(cachedStats != null) cachedStats 
-    			else new DoubleRDDFunctions(rdd.asInstanceOf[RDD[Double]]).stats
-    
+    def stats = if (cachedStats != null) cachedStats
+    else new DoubleRDDFunctions(rdd.asInstanceOf[RDD[Double]]).stats
+
     /**
      * print brief description of this column
      */
     def describe() {
         println(toString)
-        if (tpe ==  ru.typeOf[Double]) {
+        if (tpe =:= ru.typeOf[Double]) {
             println(s"\tmax:${stats.max}\n\tmin:${stats.min}\n\tcount:${stats.count}\n\tsum:${stats.sum}\n")
             println(s"\tmean:${stats.mean}\n\tvariance(sample):${stats.sampleVariance}\n\tstddev(sample):${stats.sampleStdev}\n")
             println(s"\tvariance:${stats.variance}\n\tstddev:${stats.stdev}")
@@ -46,15 +48,35 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA 
     }
 
     /**
+     * print upto 10 elements
+     */
+    def list {
+        println("Count: $count")
+        if (tpe =:= ru.typeOf[Double]) {
+            if (count <= 10)
+                number.collect.foreach { println _ }
+            else
+                number.take(10).foreach { println _ }
+        } else if (tpe =:= ru.typeOf[String]) {
+            if (count <= 10)
+                string.collect.foreach { println _ }
+            else
+                string.take(10).foreach { println _ }
+        } else {
+            println("Wrong type!")
+        }
+    }
+
+    /**
      * count number of elements. although rdd is var not val the number of elements does not change
      */
     lazy val count = rdd.count
-    
+
     /**
      * get rdd of doubles to use doublerddfunctions
      */
     def number = {
-        if (tpe == ru.typeOf[Double]) {
+        if (tpe =:= ru.typeOf[Double]) {
             rdd.asInstanceOf[RDD[Double]]
         } else {
             null
@@ -65,7 +87,7 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA 
      * get rdd of strings to do string functions
      */
     def string = {
-        if (tpe == ru.typeOf[String]) {
+        if (tpe =:= ru.typeOf[String]) {
             rdd.asInstanceOf[RDD[String]]
         } else {
             null
@@ -73,12 +95,45 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA 
     }
 
     /**
-     * does the column have NA
+     * distinct
+     */
+    def distinct = {
+        rdd.distinct
+    }
+    
+    /**
+     * does the column have any NA
      */
     def hasNA = {
         countNA > 0
     }
-
+    
+    /**
+     * mark this value as NA
+     */
+    def markNA(naVal: Double) {
+        cachedStats = null
+        if (tpe == ru.typeOf[Double]) {
+            val col = this.asInstanceOf[Column[Double]]
+            rdd = col.rdd.map { cell => if (cell == naVal) Double.NaN else cell }.asInstanceOf[RDD[T]]
+        } else {
+            println("This is not a Double column")
+        }
+    }
+    
+    /**
+     * mark a string as NA: mutates the string to empty string
+     */
+    def markNA(naVal: String) {
+        cachedStats = null
+        if (tpe == ru.typeOf[String]) {
+            val col = this.asInstanceOf[Column[String]]
+            rdd = col.rdd.map { cell => if (cell == naVal) "" else cell }.asInstanceOf[RDD[T]]
+        } else {
+            println("This is not a String column")
+        }
+    }
+    
     /**
      * count the number of NAs
      */
@@ -91,23 +146,28 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA 
     }
 
     /**
-     * replace NaN with another number
+     * replace NA with another number
      */
     def fillNA(value: Double) {
         cachedStats = null
-        if (tpe == ru.typeOf[Double]) {
+        if (tpe =:= ru.typeOf[Double]) {
             val col = this.asInstanceOf[Column[Double]]
             rdd = col.rdd.map { cell => if (cell.isNaN) value else cell }.asInstanceOf[RDD[T]]
+        } else {
+            println("This is not a Double column")
         }
     }
-
+    
     /**
-     * replace empty string with another string
+     * replace NA with another string
      */
     def fillNA(value: String) {
-        if (tpe == ru.typeOf[String]) {
+        cachedStats = null
+        if (tpe =:= ru.typeOf[String]) {
             val col = this.asInstanceOf[Column[String]]
             rdd = col.rdd.map { cell => if (cell.isEmpty) value else cell }.asInstanceOf[RDD[T]]
+        } else {
+            println("This is not a String column")
         }
     }
 
@@ -115,28 +175,28 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA 
         def withColumnOfDoubles(a: Column[Double], b: Column[Double], oper: (Double, Double) => Double) = {
             val zipped = a.rdd.zip(b.rdd)
             val result = zipped.map { x => oper(x._1, x._2) }
-            new Column(result, -1, 0)
+            Column(result)
         }
 
         def filterDouble(a: Column[Double], b: Double, oper: (Double, Double) => Boolean) = {
             val result = a.rdd.filter { x => oper(x, b) }
-            new Column(result, -1, 0)
+            Column(result)
         }
 
         def withColumnOfString(a: Column[Double], b: Column[String], oper: (Double, String) => String) = {
             val zipped = a.rdd.zip(b.rdd)
             val result = zipped.map { x => oper(x._1, x._2) }
-            new Column(result, -1, 0)
+            Column(result)
         }
 
         def withScalarDouble(a: Column[Double], b: Double, oper: (Double, Double) => Double) = {
             val result = a.rdd.map { x => oper(x, b) }
-            new Column(result, -1, 0)
+            Column(result)
         }
 
         def withScalarString(a: Column[Double], b: String, oper: (Double, String) => String) = {
             val result = a.rdd.map { x => oper(x, b) }
-            new Column(result, -1, 0)
+            Column(result)
         }
     }
 
@@ -144,28 +204,28 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA 
         def withColumnOfDoubles(a: Column[String], b: Column[Double], oper: (String, Double) => String) = {
             val zipped = a.rdd.zip(b.rdd)
             val result = zipped.map { x => oper(x._1, x._2) }
-            new Column(result, -1, 0)
+            Column(result)
         }
 
         def filterDouble(a: Column[String], b: Double, oper: (String, Double) => Boolean) = {
             val result = a.rdd.filter { x => oper(x, b) }
-            new Column(result, -1, 0)
+            Column(result)
         }
 
         def withColumnOfString(a: Column[String], b: Column[String], oper: (String, String) => String) = {
             val zipped = a.rdd.zip(b.rdd)
             val result = zipped.map { x => oper(x._1, x._2) }
-            new Column(result, -1, 0)
+            Column(result)
         }
 
         def withScalarDouble(a: Column[String], b: Double, oper: (String, Double) => String) = {
             val result = a.rdd.map { x => oper(x, b) }
-            new Column(result, -1, 0)
+            Column(result)
         }
 
         def withScalarString(a: Column[String], b: String, oper: (String, String) => String) = {
             val result = a.rdd.map { x => oper(x, b) }
-            new Column(result, -1, 0)
+            Column(result)
         }
     }
 
@@ -173,10 +233,10 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA 
      * add two columns
      */
     def +(that: Column[_]) = {
-        if (tpe == ru.typeOf[Double] && that.tpe == ru.typeOf[Double])
+        if (tpe =:= ru.typeOf[Double] && that.tpe =:= ru.typeOf[Double])
             ColumnOfDoublesOps.withColumnOfDoubles(this.asInstanceOf[Column[Double]], that.asInstanceOf[Column[Double]], DoubleOps.addDouble)
                 .asInstanceOf[Column[Any]]
-        else if (tpe == ru.typeOf[String] && that.tpe == ru.typeOf[Double])
+        else if (tpe =:= ru.typeOf[String] && that.tpe =:= ru.typeOf[Double])
             ColumnOfStringsOps.withColumnOfDoubles(this.asInstanceOf[Column[String]], that.asInstanceOf[Column[Double]], StringOps.addDouble)
                 .asInstanceOf[Column[Any]]
         else null
@@ -186,7 +246,7 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA 
      * subtract a column from another
      */
     def -(that: Column[_]) = {
-        if (tpe == ru.typeOf[Double] && that.tpe == ru.typeOf[Double])
+        if (tpe =:= ru.typeOf[Double] && that.tpe =:= ru.typeOf[Double])
             ColumnOfDoublesOps.withColumnOfDoubles(this.asInstanceOf[Column[Double]], that.asInstanceOf[Column[Double]], DoubleOps.subtract)
                 .asInstanceOf[Column[Any]]
         else null
@@ -196,7 +256,7 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA 
      *  divide a column by another
      */
     def /(that: Column[_]) = {
-        if (tpe == ru.typeOf[Double] && that.tpe == ru.typeOf[Double])
+        if (tpe =:= ru.typeOf[Double] && that.tpe =:= ru.typeOf[Double])
             ColumnOfDoublesOps.withColumnOfDoubles(this.asInstanceOf[Column[Double]], that.asInstanceOf[Column[Double]], DoubleOps.divide)
                 .asInstanceOf[Column[Any]]
         else null
@@ -206,77 +266,80 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA 
      * multiply a column with another
      */
     def *(that: Column[_]) = {
-        if (tpe == ru.typeOf[Double] && that.tpe == ru.typeOf[Double])
+        if (tpe =:= ru.typeOf[Double] && that.tpe =:= ru.typeOf[Double])
             ColumnOfDoublesOps.withColumnOfDoubles(this.asInstanceOf[Column[Double]], that.asInstanceOf[Column[Double]], DoubleOps.multiply)
                 .asInstanceOf[Column[Any]]
         else null
     }
-    
+
+    /**
+     * generate a Column of boolean. true if this column is greater than another
+     */
     def >>(that: Column[_]) = {
-        if (tpe == ru.typeOf[Double] && that.tpe == ru.typeOf[Double])
+        if (tpe =:= ru.typeOf[Double] && that.tpe =:= ru.typeOf[Double])
             ColumnOfDoublesOps.withColumnOfDoubles(this.asInstanceOf[Column[Double]], that.asInstanceOf[Column[Double]], DoubleOps.gt)
-        else if (tpe == ru.typeOf[String] && that.tpe == ru.typeOf[String])
+        else if (tpe =:= ru.typeOf[String] && that.tpe =:= ru.typeOf[String])
             ColumnOfStringsOps.withColumnOfString(this.asInstanceOf[Column[String]], that.asInstanceOf[Column[String]], StringOps.gt)
         else null
     }
-    
+
     /**
      * compare two columns
      */
     def ==(that: Column[_]): Condition = {
-        if (tpe == ru.typeOf[Double] && that.tpe == ru.typeOf[Double])
+        if (tpe =:= ru.typeOf[Double] && that.tpe =:= ru.typeOf[Double])
             new DoubleColumnWithDoubleColumnCondition(index, that.index, DoubleOps.eqColumn)
-        else if (tpe == ru.typeOf[String] && that.tpe == ru.typeOf[String])
+        else if (tpe =:= ru.typeOf[String] && that.tpe =:= ru.typeOf[String])
             new StringColumnWithStringColumnCondition(index, that.index, StringOps.eqColumn)
         else
             null
     }
     def >(that: Column[_]): Condition = {
-        if (tpe == ru.typeOf[Double] && that.tpe == ru.typeOf[Double])
+        if (tpe =:= ru.typeOf[Double] && that.tpe =:= ru.typeOf[Double])
             new DoubleColumnWithDoubleColumnCondition(index, that.index, DoubleOps.gtColumn)
-        else if (tpe == ru.typeOf[String] && that.tpe == ru.typeOf[String])
+        else if (tpe =:= ru.typeOf[String] && that.tpe =:= ru.typeOf[String])
             new StringColumnWithStringColumnCondition(index, that.index, StringOps.gtColumn)
         else
             null
     }
     def >=(that: Column[_]): Condition = {
-        if (tpe == ru.typeOf[Double] && that.tpe == ru.typeOf[Double])
+        if (tpe =:= ru.typeOf[Double] && that.tpe =:= ru.typeOf[Double])
             new DoubleColumnWithDoubleColumnCondition(index, that.index, DoubleOps.gteColumn)
-        else if (tpe == ru.typeOf[String] && that.tpe == ru.typeOf[String])
+        else if (tpe =:= ru.typeOf[String] && that.tpe =:= ru.typeOf[String])
             new StringColumnWithStringColumnCondition(index, that.index, StringOps.gteColumn)
         else
             null
     }
     def <(that: Column[_]): Condition = {
-        if (tpe == ru.typeOf[Double] && that.tpe == ru.typeOf[Double])
+        if (tpe =:= ru.typeOf[Double] && that.tpe =:= ru.typeOf[Double])
             new DoubleColumnWithDoubleColumnCondition(index, that.index, DoubleOps.ltColumn)
-        else if (tpe == ru.typeOf[String] && that.tpe == ru.typeOf[String])
+        else if (tpe =:= ru.typeOf[String] && that.tpe =:= ru.typeOf[String])
             new StringColumnWithStringColumnCondition(index, that.index, StringOps.ltColumn)
         else
             null
     }
     def <=(that: Column[_]): Condition = {
-        if (tpe == ru.typeOf[Double] && that.tpe == ru.typeOf[Double])
+        if (tpe =:= ru.typeOf[Double] && that.tpe =:= ru.typeOf[Double])
             new DoubleColumnWithDoubleColumnCondition(index, that.index, DoubleOps.lteColumn)
-        else if (tpe == ru.typeOf[String] && that.tpe == ru.typeOf[String])
+        else if (tpe =:= ru.typeOf[String] && that.tpe =:= ru.typeOf[String])
             new StringColumnWithStringColumnCondition(index, that.index, StringOps.lteColumn)
         else
             null
     }
     def !=(that: Column[_]): Condition = {
-        if (tpe == ru.typeOf[Double] && that.tpe == ru.typeOf[Double])
+        if (tpe =:= ru.typeOf[Double] && that.tpe =:= ru.typeOf[Double])
             new DoubleColumnWithDoubleColumnCondition(index, that.index, DoubleOps.neqColumn)
-        else if (tpe == ru.typeOf[String] && that.tpe == ru.typeOf[String])
+        else if (tpe =:= ru.typeOf[String] && that.tpe =:= ru.typeOf[String])
             new StringColumnWithStringColumnCondition(index, that.index, StringOps.neqColumn)
         else
             null
-    }    
-    
+    }
+
     /**
      * compare every element in this column with a number
      */
     def ==(that: Double) = {
-        if (tpe == ru.typeOf[Double])
+        if (tpe =:= ru.typeOf[Double])
             new DoubleColumnWithDoubleScalarCondition(index, DoubleOps.eqFilter(that))
         else
             null
@@ -285,7 +348,7 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA 
      * compare every element in this column with a number
      */
     def >=(that: Double) = {
-        if (tpe == ru.typeOf[Double])
+        if (tpe =:= ru.typeOf[Double])
             new DoubleColumnWithDoubleScalarCondition(index, DoubleOps.gteFilter(that))
         else
             null
@@ -294,7 +357,7 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA 
      * compare every element in this column with a number
      */
     def >(that: Double) = {
-        if (tpe == ru.typeOf[Double])
+        if (tpe =:= ru.typeOf[Double])
             new DoubleColumnWithDoubleScalarCondition(index, DoubleOps.gtFilter(that))
         else
             null
@@ -303,7 +366,7 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA 
      * compare every element in this column with a number
      */
     def <=(that: Double) = {
-        if (tpe == ru.typeOf[Double])
+        if (tpe =:= ru.typeOf[Double])
             new DoubleColumnWithDoubleScalarCondition(index, DoubleOps.lteFilter(that))
         else
             null
@@ -312,7 +375,7 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA 
      * compare every element in this column with a number
      */
     def <(that: Double) = {
-        if (tpe == ru.typeOf[Double])
+        if (tpe =:= ru.typeOf[Double])
             new DoubleColumnWithDoubleScalarCondition(index, DoubleOps.ltFilter(that))
         else
             null
@@ -321,7 +384,7 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA 
      * compare every element in this column with a number
      */
     def !=(that: Double) = {
-        if (tpe == ru.typeOf[Double])
+        if (tpe =:= ru.typeOf[Double])
             new DoubleColumnWithDoubleScalarCondition(index, DoubleOps.neqFilter(that))
         else
             null
@@ -331,43 +394,43 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA 
      * compare every element in this column with a number
      */
     def ==(that: String) = {
-        if (tpe == ru.typeOf[String])
+        if (tpe =:= ru.typeOf[String])
             new StringColumnWithStringScalarCondition(index, StringOps.eqFilter(that))
         else
             null
     }
-   /**
+    /**
      * compare every element in this column with a number
      */
     def >=(that: String) = {
-        if (tpe == ru.typeOf[String])
+        if (tpe =:= ru.typeOf[String])
             new StringColumnWithStringScalarCondition(index, StringOps.gteFilter(that))
         else
             null
     }
-   /**
+    /**
      * compare every element in this column with a number
      */
     def >(that: String) = {
-        if (tpe == ru.typeOf[String])
+        if (tpe =:= ru.typeOf[String])
             new StringColumnWithStringScalarCondition(index, StringOps.gtFilter(that))
         else
             null
     }
-   /**
+    /**
      * compare every element in this column with a number
      */
     def <=(that: String) = {
-        if (tpe == ru.typeOf[String])
+        if (tpe =:= ru.typeOf[String])
             new StringColumnWithStringScalarCondition(index, StringOps.lteFilter(that))
         else
             null
     }
-   /**
+    /**
      * compare every element in this column with a number
      */
     def <(that: String) = {
-        if (tpe == ru.typeOf[String])
+        if (tpe =:= ru.typeOf[String])
             new StringColumnWithStringScalarCondition(index, StringOps.ltFilter(that))
         else
             null
@@ -376,7 +439,7 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA 
      * compare every element in this column with a number
      */
     def !=(that: String) = {
-        if (tpe == ru.typeOf[String])
+        if (tpe =:= ru.typeOf[String])
             new StringColumnWithStringScalarCondition(index, StringOps.neqFilter(that))
         else
             null
@@ -386,18 +449,18 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA 
      * filter using custom function
      */
     def filter(f: Double => Boolean) = {
-        if (tpe == ru.typeOf[Double])
+        if (tpe =:= ru.typeOf[Double])
             new DoubleColumnCondition(index, f)
         else
             null
     }
     def filter(f: String => Boolean) = {
-        if (tpe == ru.typeOf[String])
+        if (tpe =:= ru.typeOf[String])
             new StringColumnCondition(index, f)
         else
             null
     }
-    
+
     /**
      * apply a given function to a column to generate a new column
      * the new column does not belong to any DF automatically
@@ -405,9 +468,9 @@ case class Column[T: ru.TypeTag](var rdd: RDD[T], /* mutates only due to fillNA 
     def map[U: ClassTag](mapper: T => U): Column[Any] = {
         val mapped = rdd.map { row => mapper(row) }
         if (classTag[U] == classTag[Double])
-            new Column[Double](mapped.asInstanceOf[RDD[Double]], -1, 0).asInstanceOf[Column[Any]]
+            Column(mapped.asInstanceOf[RDD[Double]]).asInstanceOf[Column[Any]]
         else
-            new Column[String](mapped.asInstanceOf[RDD[String]], -1, 0).asInstanceOf[Column[Any]]
+            Column(mapped.asInstanceOf[RDD[String]]).asInstanceOf[Column[Any]]
     }
 
 }
@@ -483,8 +546,8 @@ case object StringOps {
 }
 
 object Column {
-    def apply(stringRdd: RDD[String], index: Int) = {
-        var parseErrors = 0L
+    def asDoubles(sc: SparkContext, stringRdd: RDD[String], index: Int) = {
+        val parseErrors = sc.accumulator(0L)
         val doubleRdd = stringRdd map { x =>
             var y = Double.NaN
             try {
@@ -494,6 +557,29 @@ object Column {
             }
             y
         }
-        new Column[Double](doubleRdd, index, parseErrors)
+        doubleRdd.foreach { x: Double => {} } //to trigger accumulation of parseErrors
+        new Column[Double](doubleRdd, index, parseErrors.value)
+    }
+    
+    def asDoubles(sc: SparkContext, col: Column[String], index: Int): Column[Double] = {
+    	asDoubles(sc, col.rdd, index)
+    }
+    
+    /**
+     * create Column from existing RDD
+     */
+    def apply[T: ru.TypeTag](rdd: RDD[T], index: Int = -1) = {
+        val tpe = ru.typeOf[T]
+        if (tpe =:= ru.typeOf[Double])
+            newDoubleColumn(rdd.asInstanceOf[RDD[Double]], index)
+        else if (tpe =:= ru.typeOf[String])
+            newStringColumn(rdd.asInstanceOf[RDD[String]], index)
+        else null
+    }
+    def newDoubleColumn(rdd: RDD[Double], index: Int) = {
+        new Column(rdd, index, 0)
+    }
+    def newStringColumn(rdd: RDD[String], index: Int) = {
+        new Column(rdd, index, 0)
     }
 }

@@ -16,6 +16,7 @@ import com.ayasdi.bigdf._
 import org.scalatest.BeforeAndAfterAll
 import org.apache.spark.rdd.DoubleRDDFunctions
 import scala.reflect.runtime.universe._
+import org.apache.spark.SparkConf
 
 class DFTest extends FunSuite with BeforeAndAfterAll {
     var sc: SparkContext = _
@@ -48,6 +49,15 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         DF(sc, h, v)
     }
 
+    private def makeDFWithNulls = {
+        val h = Vector("a", "b", "c", "Date")
+        val v = Vector(Vector(-1, 12.0, 13.0),
+            Vector("b1", "NULL", "b3"),
+            Vector(31.0, 32.0, 33.0),
+            Vector(1.36074391383E12, 1.360616948975E12, 1.36055080601E12))
+        DF(sc, h, v)
+    }
+    
     private def makeDFWithString = {
         val h = Vector("a", "b", "c", "Date")
         val v = Vector(Vector("11.0", "12.0", "13.0"),
@@ -57,6 +67,10 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         DF(sc, h, v)
     }
 
+    private def makeDFFromCSVFile(file: String) = {
+        DF(sc, file, ',')
+    }
+
     test("Construct: DF from Vector") {
         val df = makeDF
         assert(df.numCols === 4)
@@ -64,7 +78,9 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
     }
 
     test("Construct: DF from CSV file") {
-        //FIXME
+        val df = makeDFFromCSVFile("src/test/resources/pivot.csv")
+        assert(df.numCols === 4)
+        assert(df.numRows === 4)
     }
 
     test("Column Index: Refer to a column of a DF") {
@@ -100,10 +116,10 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
 
     test("Column Index: Slices") {
         val df = makeDF
-        val colSeq1 = df(List(0 to 0))
+        val colSeq1 = df(0)
         assert(colSeq1.cols.length === 1)
         assert((colSeq1.cols(0)._2 eq df("a")) === true)
-        val colSeq2 = df(List(0 to 0, 1 to 3))
+        val colSeq2 = df(0 to 0, 1 to 3)
         assert(colSeq2.cols.length === 4)
         assert((colSeq2.cols(0)._2 eq df("a")) === true)
         assert((colSeq2.cols(1)._2 eq df("b")) === true)
@@ -127,14 +143,8 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
     }
 
     test("Parsing: Parse doubles") {
-        val h = Vector("a", "b", "c", "Date")
-        val v = Vector(Vector("11.0", "12.0a", "13.0b"), //guess as double but string later
-            Vector(21.0, 22.0, 23.0),
-            Vector(31.0, 32.0, 33.0),
-            Vector(1.36074391383E12, 1.360616948975E12, 1.36055080601E12))
-        val df = DF(sc, h, v)
-        //FIXME: this should work for file input
-        //assert(df("a").parseErrors === 2)
+        val df = makeDFFromCSVFile("src/test/resources/mixedDoubles.csv")
+        assert(df("Feature1").parseErrors === 1)
     }
 
     test("Filter/Select: Double Column comparisons with Scalar") {
@@ -212,12 +222,21 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         df("b").fillNA("hi")
         assert(df.countRowsWithNA === 0)
     }
+    
+    test("NA: Marking a value as NA") {
+        val df = makeDFWithNulls
+        assert(df.countRowsWithNA === 0)
+        df("a").markNA(-1)
+        assert(df.countRowsWithNA === 1)
+        df("b").markNA("NULL")
+        assert(df.countRowsWithNA === 2)
+    }
 
     test("Column Ops: New column as simple function of existing ones") {
         val df = makeDF
         val aa = df("a").number.first
         val bb = df("b").number.first
-        
+
         df("new") = df("a") + df("b")
         assert(df("new").number.first === aa + bb)
         df("new") = df("a") - df("b")
@@ -233,24 +252,53 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         df("new") = df("a", "b").map(TestFunctions.summer)
         assert(df("new").number.first === 21 + 11)
     }
-    
+
     test("Aggregate") {
         val df = makeDF
-        df("groupByThis") = df("a").map{ x => 1.0 }
+        df("groupByThis") = df("a").map { x => 1.0 }
         val sumOfA = df.aggregate("groupByThis", "a", AggSimple)
         assert(sumOfA.first._2 === df("a").number.sum)
         val arrOfA = df.aggregate("groupByThis", "a", AggCustom)
         assert(arrOfA.first._2 === Array(11.0, 12.0, 13.0))
     }
+
+    test("Pivot") {
+        val df = makeDFFromCSVFile("src/test/resources/pivot.csv")
+        val df2 = df.pivot("Customer", "Period")
+        df2.describe
+        df2.list
+        assert(df2.numRows === 3)
+        assert(df2.numCols === 6)
+        val df3 = df2("S_Customer@Period==2.0").string.zip(df2("S_Customer@Period==1.0").string)
+        val bad = sc.accumulator(0)
+        df3.foreach { case (a, b) => 
+            if(!a.isEmpty && !b.isEmpty && a != b)
+                bad += 1
+        }
+        assert(bad.value === 0)
+    }
+}
+
+class DFTestWithKryo extends DFTest {
+    override def beforeAll {
+        SparkUtil.silenceSpark
+        System.clearProperty("spark.master.port")
+
+        var conf = new SparkConf()
+            .setMaster("local[4]")
+            .setAppName("DFTestWithKryo")
+            .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+        sc = new SparkContext(conf)
+    }
 }
 
 object AggSimple extends Aggregator[Double] {
-	def aggregate(a: Double, b: Double) = a + b
+    def aggregate(a: Double, b: Double) = a + b
 }
 
 object AggCustom extends Aggregator[Array[Double]] {
-    override def convert(a: Array[Any]): Array[Double] =  { Array(a(colIndex).asInstanceOf[Double]) }
-	def aggregate(a: Array[Double], b: Array[Double]) = a ++ b
+    override def convert(a: Array[Any]): Array[Double] = { Array(a(colIndex).asInstanceOf[Double]) }
+    def aggregate(a: Array[Double], b: Array[Double]) = a ++ b
 }
 
 case object TestFunctions {

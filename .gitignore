@@ -12,6 +12,8 @@
 
 *.cache
 
+**/target/*
+
 target/*
 
 .idea/*
