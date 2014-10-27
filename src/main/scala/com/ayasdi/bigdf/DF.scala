@@ -84,8 +84,14 @@ case class DF private (val sc: SparkContext,
     private def addHeader(header: Iterator[String]) = {
         var i = 0
         header.foreach { colName =>
-            cols.put(colName, null)
-            colIndexToName.put(i, colName)
+            val cleanedColName = if(cols.contains(colName)) {
+                println(s"Duplicate column ${colName} renamed")
+                colName + "_"
+            } else { 
+                colName
+            }
+            cols.put(cleanedColName, null)
+            colIndexToName.put(i, cleanedColName)
             i += 1
         }
         i
