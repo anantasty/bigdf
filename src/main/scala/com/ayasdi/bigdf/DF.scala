@@ -5,20 +5,17 @@
  */
 package com.ayasdi.bigdf
 
-import scala.collection.mutable.HashMap
-import scala.util.Try
+import com.ayasdi.bigdf.Preamble._
+import org.apache.commons.csv._
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
 import org.apache.spark.rdd.RDD
-import org.apache.commons.csv._
-import scala.reflect.ClassTag
-import scala.reflect.runtime.universe._
-import scala.reflect.ClassTag
-import com.ayasdi.bigdf.Preamble._
+
 import scala.collection.JavaConversions
-import scala.reflect.{ ClassTag, classTag }
-import scala.reflect.runtime.{ universe => ru }
-import scala.util.Random
+import scala.collection.mutable.HashMap
+import scala.reflect.ClassTag
+import scala.reflect.runtime.{universe => ru}
+import scala.util.{Random, Try}
 
 /**
  * types of joins
@@ -42,24 +39,33 @@ object ColumnType extends Enumeration {
 case class DF private (val sc: SparkContext,
                        val cols: HashMap[String, Column[Any]] = new HashMap[String, Column[Any]],
                        val colIndexToName: HashMap[Int, String] = new HashMap[Int, String]) {
+    val useRowStrategy = false
     def numCols = cols.size
-    lazy val numRows = if (cols.head._2 == null) 0 else cols.head._2.rdd.count
+
+  lazy val numRows = if (cols.head._2 == null) 0 else cols.head._2.rdd.count
 
     override def toString() = {
         "Silence is golden" //otherwise prints too much stuff
     }
 
     /*
-     * columns are zip'd together to get rows
+     *   zip the given list of columns into arrays
      */
-    private def computeRows: RDD[Array[Any]] = {
-        val first = cols(colIndexToName(0)).rdd
-        val rest = (1 until colIndexToName.size).toList.map { i => cols(colIndexToName(i)).rdd }
+    private def zipColumns(colIndices: Seq[Int]): RDD[Array[Any]] = {
+        val first = cols(colIndexToName(colIndices.head)).rdd
+        val rest = colIndices.tail.map { i => cols(colIndexToName(i)).rdd }
 
         //if you get a compile error here, you have the wrong spark
         //get my forked version or patch yours from my pull request
-        //https://github.com/apache/spark/pull/2429  
-        first.zip(rest) //if you get a compile error here, you have the wrong spark
+        //https://github.com/apache/spark/pull/2429
+        first.zip(rest)
+    }
+
+    /*
+     * columns are zip'd together to get rows, expensive operation
+     */
+    private def computeRows: RDD[Array[Any]] = {
+        zipColumns((0 until colIndexToName.size).toList)
     }
     private var rowsRddCached: RDD[Array[Any]] = null
     def rowsRdd = {
@@ -87,7 +93,7 @@ case class DF private (val sc: SparkContext,
             val cleanedColName = if(cols.contains(colName)) {
                 println(s"Duplicate column ${colName} renamed")
                 colName + "_"
-            } else { 
+            } else {
                 colName
             }
             cols.put(cleanedColName, null)
@@ -167,7 +173,7 @@ case class DF private (val sc: SparkContext,
      * usually more efficient if there are a few columns
      */
     private def filterRowStrategy(cond: Condition) = {
-        rowsRdd.filter(row => cond.check(row))
+        rowsRdd.filter(row => cond.checkWithRowStrategy(row))
     }
 
     /*
@@ -175,15 +181,21 @@ case class DF private (val sc: SparkContext,
      * FIXME: write this code
      */
     private def filterColumnStrategy(cond: Condition) = {
-        ???
+        val zippedColRdd = zipColumns(cond.colSeq)
+        zippedColRdd.map(cols => cond.checkWithColStrategy(cols))
     }
 
     /**
      * wrapper on filter to create a new DF from filtered RDD
      */
     def where(cond: Condition): DF = {
+      if(useRowStrategy) {
         val filteredRows = filterRowStrategy(cond)
         fromRows(filteredRows)
+      } else {
+        val filtration = filterColumnStrategy(cond)
+        DF(this, filtration)
+      }
     }
 
     /**
@@ -535,7 +547,30 @@ object DF {
         new DF(sc, new HashMap[String, Column[Any]], new HashMap[Int, String])
     }
 
-    def joinRdd(sc: SparkContext, left: DF, right: DF, on: String, how: JoinType.JoinType = JoinType.Inner) = {
+    /**
+     * make a filtered DF
+     */
+    def apply(df: DF, filtration: RDD[Boolean]) = {
+      val cols = df.cols.clone
+      for(i <- 0 until df.numCols) {
+        def applyFilter[T: ClassTag](in: RDD[T]) = {
+          in.zip(filtration).filter { _._2 == true }.map { _._1 }
+        }
+        val colName = df.colIndexToName(i)
+        val col = cols(colName)
+        if(col.tpe =:= ru.typeOf[Double])
+          cols(colName) = Column(applyFilter(col.number), i)
+        else if(col.tpe =:= ru.typeOf[Double])
+          cols(colName) = Column(applyFilter(col.string), i)
+        else
+          println("Unexpected column type while column strategy filtering")
+      }
+      println(cols)
+      new DF(df.sc, cols, df.colIndexToName.clone)
+    }
+
+
+  def joinRdd(sc: SparkContext, left: DF, right: DF, on: String, how: JoinType.JoinType = JoinType.Inner) = {
         val leftWithKey = left.cols(on).rdd.zip(left.rowsRdd)
         val rightWithKey = right.cols(on).rdd.zip(right.rowsRdd)
         leftWithKey.join(rightWithKey)

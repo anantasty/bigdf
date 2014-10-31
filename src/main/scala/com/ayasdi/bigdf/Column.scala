@@ -5,13 +5,13 @@
  */
 package com.ayasdi.bigdf
 
-import org.apache.spark.rdd.DoubleRDDFunctions
-import org.apache.spark.rdd.RDD
-import org.apache.spark.util.StatCounter
-import scala.reflect.{ ClassTag, classTag }
-import scala.reflect.runtime.{ universe => ru }
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
+import org.apache.spark.rdd.{DoubleRDDFunctions, RDD}
+import org.apache.spark.util.StatCounter
+
+import scala.reflect.runtime.{universe => ru}
+import scala.reflect.{ClassTag, classTag}
 
 object Preamble {
     implicit def toColumnAny[T](col: Column[T]) = { col.asInstanceOf[Column[Any]] }
@@ -100,14 +100,14 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates due to fil
     def distinct = {
         rdd.distinct
     }
-    
+
     /**
      * does the column have any NA
      */
     def hasNA = {
         countNA > 0
     }
-    
+
     /**
      * mark this value as NA
      */
@@ -120,7 +120,7 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates due to fil
             println("This is not a Double column")
         }
     }
-    
+
     /**
      * mark a string as NA: mutates the string to empty string
      */
@@ -133,7 +133,7 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates due to fil
             println("This is not a String column")
         }
     }
-    
+
     /**
      * count the number of NAs
      */
@@ -157,7 +157,7 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates due to fil
             println("This is not a Double column")
         }
     }
-    
+
     /**
      * replace NA with another string
      */
@@ -560,16 +560,17 @@ object Column {
         doubleRdd.foreach { x: Double => {} } //to trigger accumulation of parseErrors
         new Column[Double](doubleRdd, index, parseErrors.value)
     }
-    
+
     def asDoubles(sc: SparkContext, col: Column[String], index: Int): Column[Double] = {
     	asDoubles(sc, col.rdd, index)
     }
-    
+
     /**
      * create Column from existing RDD
      */
     def apply[T: ru.TypeTag](rdd: RDD[T], index: Int = -1) = {
         val tpe = ru.typeOf[T]
+        println(tpe)
         if (tpe =:= ru.typeOf[Double])
             newDoubleColumn(rdd.asInstanceOf[RDD[Double]], index)
         else if (tpe =:= ru.typeOf[String])

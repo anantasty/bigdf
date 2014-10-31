@@ -6,17 +6,13 @@
 
 package com.ayasdi.bigdf
 
-import scala.collection.TraversableOnce.MonadOps
-import org.apache.log4j.Level
-import org.apache.log4j.Logger
-import org.apache.spark.SparkContext
+import org.apache.log4j.{Level, Logger}
+import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.SparkContext._
-import org.scalatest.FunSuite
-import com.ayasdi.bigdf._
-import org.scalatest.BeforeAndAfterAll
-import org.apache.spark.rdd.DoubleRDDFunctions
+import org.scalatest.{BeforeAndAfterAll, FunSuite}
+
+import scala.collection.TraversableOnce.MonadOps
 import scala.reflect.runtime.universe._
-import org.apache.spark.SparkConf
 
 class DFTest extends FunSuite with BeforeAndAfterAll {
     var sc: SparkContext = _
@@ -151,7 +147,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         val df = makeDF
         val dfEq12 = df(df("a") == 12.0)
         assert(dfEq12.numRows === 1)
-        val dfNe12 = df(df("a") != 12)
+        val dfNe12 = df(df("a") != 12.0)
         assert(dfNe12.numRows === 2)
         val dfGt12 = df(df("a") > 12)
         assert(dfGt12.numRows === 1)

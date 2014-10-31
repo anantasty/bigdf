@@ -5,12 +5,9 @@
  */
 package com.ayasdi.bigdf
 
-import scala.reflect.ClassTag
-import scala.reflect.classTag
-import scala.reflect.runtime.universe
-import scala.reflect.runtime.universe.TypeTag.Double
-
 import org.apache.spark.rdd.RDD
+
+import scala.reflect.{ClassTag, classTag}
 
 /*
  * Column sequence
