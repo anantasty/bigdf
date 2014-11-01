@@ -6,10 +6,11 @@
 package com.ayasdi.bigdf
 
 import scala.reflect.runtime.{universe => ru}
+import scala.collection.mutable.HashMap
 
 abstract class Condition {
     def checkWithRowStrategy(row: Array[Any]): Boolean
-    def checkWithColStrategy(cols: Array[Any]): Boolean
+    def checkWithColStrategy(cols: Array[Any], colMap: HashMap[Int, Int]): Boolean
     def colSeq: List[Int]
 
     def &&(that: Condition) = {
@@ -49,9 +50,8 @@ abstract class CompoundCondition(val left: Condition,
 case class DoubleColumnWithDoubleScalarCondition(i: Int, val cmp: Double => Boolean) extends UnaryCondition(i) {
     def checkWithRowStrategy(row: Array[Any]) = cmp(row(colIndex).asInstanceOf[Double])
 
-    def checkWithColStrategy(cols: Array[Any]) = {
-      println("DCS" + cols(0) + " " + cols(1))
-      val index = colSeq.indexOf(colIndex)
+    def checkWithColStrategy(cols: Array[Any], colMap: HashMap[Int, Int]) = {
+      val index = colMap(colIndex)
       cmp(cols(index).asInstanceOf[Double])
     }
 }
@@ -64,9 +64,9 @@ case class DoubleColumnWithDoubleColumnCondition(i: Int, j: Int,
         cmp(elemLeft, elemRight)
     }
 
-    def checkWithColStrategy(cols: Array[Any]) = {
-      val elemLeft = cols(colSeq.indexOf(colIndexLeft)).asInstanceOf[Double]
-      val elemRight = cols(colSeq.indexOf(colIndexRight)).asInstanceOf[Double]
+    def checkWithColStrategy(cols: Array[Any], colMap: HashMap[Int, Int]) = {
+      val elemLeft = cols(colMap(colIndexLeft)).asInstanceOf[Double]
+      val elemRight = cols(colMap(colIndexRight)).asInstanceOf[Double]
       cmp(elemLeft, elemRight)
     }
 }
@@ -75,8 +75,8 @@ case class StringColumnWithStringScalarCondition(i: Int,
                                                  val cmp: String => Boolean) extends UnaryCondition(i) {
     def checkWithRowStrategy(row: Array[Any]) = cmp(row(colIndex).asInstanceOf[String])
 
-    def checkWithColStrategy(cols: Array[Any]) = {
-      val index = colSeq.indexOf(colIndex)
+    def checkWithColStrategy(cols: Array[Any], colMap: HashMap[Int, Int]) = {
+      val index = colMap(colIndex)
       cmp(cols(index).asInstanceOf[String])
     }
 }
@@ -89,24 +89,24 @@ case class StringColumnWithStringColumnCondition(i: Int, j: Int,
         cmp(elemLeft, elemRight)
     }
 
-    def checkWithColStrategy(cols: Array[Any]) = {
-      val elemLeft = cols(colSeq.indexOf(colIndexLeft)).asInstanceOf[String]
-      val elemRight = cols(colSeq.indexOf(colIndexRight)).asInstanceOf[String]
+    def checkWithColStrategy(cols: Array[Any], colMap: HashMap[Int, Int]) = {
+      val elemLeft = cols(colMap(colIndexLeft)).asInstanceOf[String]
+      val elemRight = cols(colMap(colIndexRight)).asInstanceOf[String]
       cmp(elemLeft, elemRight)
     }
 }
 
 case class AndCondition(l: Condition, r: Condition) extends CompoundCondition(l, r) {
     def checkWithRowStrategy(row: Array[Any]) = left.checkWithRowStrategy(row) && right.checkWithRowStrategy(row)
-    def checkWithColStrategy(cols: Array[Any]) = {
-      println("AND" + cols(0) + " " + cols(1))
-      left.checkWithColStrategy(cols) && right.checkWithColStrategy(cols)
+    def checkWithColStrategy(cols: Array[Any], colMap: HashMap[Int, Int]) = {
+      left.checkWithColStrategy(cols, colMap) && right.checkWithColStrategy(cols, colMap)
     }
 }
 
 case class OrCondition(l: Condition, r: Condition) extends CompoundCondition(l, r) {
     def checkWithRowStrategy(row: Array[Any]) = left.checkWithRowStrategy(row) || right.checkWithRowStrategy(row)
-    def checkWithColStrategy(cols: Array[Any]) = left.checkWithColStrategy(cols) || right.checkWithColStrategy(cols)
+    def checkWithColStrategy(cols: Array[Any], colMap: HashMap[Int, Int]) =
+      left.checkWithColStrategy(cols, colMap) || right.checkWithColStrategy(cols, colMap)
 }
 
 case class XorCondition(l: Condition, r: Condition) extends CompoundCondition(l, r) {
@@ -117,9 +117,9 @@ case class XorCondition(l: Condition, r: Condition) extends CompoundCondition(l,
         (a || b) && !(a && b)
     }
 
-    def checkWithColStrategy(cols: Array[Any]) = {
-      val a = left.checkWithColStrategy(cols)
-      val b = right.checkWithColStrategy(cols)
+    def checkWithColStrategy(cols: Array[Any], colMap: HashMap[Int, Int]) = {
+      val a = left.checkWithColStrategy(cols, colMap)
+      val b = right.checkWithColStrategy(cols, colMap)
 
       (a || b) && !(a && b)
     }
@@ -127,20 +127,20 @@ case class XorCondition(l: Condition, r: Condition) extends CompoundCondition(l,
 
 case class NotCondition(val cond: Condition) extends Condition {
     def checkWithRowStrategy(row: Array[Any]) = !cond.checkWithRowStrategy(row)
-    def checkWithColStrategy(row: Array[Any]) = !cond.checkWithColStrategy(row)
+    def checkWithColStrategy(cols: Array[Any], colMap: HashMap[Int, Int]) = !cond.checkWithColStrategy(cols, colMap)
     def colSeq = cond.colSeq
 }
 
 case class DoubleColumnCondition(i: Int,
                                  val f: Double => Boolean) extends UnaryCondition(i) {
     def checkWithRowStrategy(row: Array[Any]) = f(row(colIndex).asInstanceOf[Double])
-    def checkWithColStrategy(cols: Array[Any]) = f(cols(colSeq.indexOf(colIndex)).asInstanceOf[Double])
+    def checkWithColStrategy(cols: Array[Any], colMap: HashMap[Int, Int]) = f(cols(colMap(colIndex)).asInstanceOf[Double])
 }
 
 case class StringColumnCondition(i: Int,
                                  val f: String => Boolean) extends UnaryCondition(i) {
     def checkWithRowStrategy(row: Array[Any]) = f(row(colIndex).asInstanceOf[String])
-    def checkWithColStrategy(cols: Array[Any]) = f(cols(colSeq.indexOf(colIndex)).asInstanceOf[String])
+    def checkWithColStrategy(cols: Array[Any], colMap: HashMap[Int, Int]) = f(cols(colMap(colIndex)).asInstanceOf[String])
 }
 
 

@@ -147,7 +147,6 @@ case class DF private (val sc: SparkContext,
 
     /**
      * get columns with numeric index
-     * FIXME: solo has to be "5 to 5" for now, should be just "5"
      */
     def columnsByIndexes(indexes: Seq[Int]) = {
         val indexRanges = indexes.map { i => i to i }
@@ -178,11 +177,16 @@ case class DF private (val sc: SparkContext,
 
     /*
      * more efficient if there are a lot of columns
-     * FIXME: write this code
      */
     private def filterColumnStrategy(cond: Condition) = {
         val zippedColRdd = zipColumns(cond.colSeq)
-        zippedColRdd.map(cols => cond.checkWithColStrategy(cols))
+        val colMap = new HashMap[Int, Int]
+        var i = 0
+        cond.colSeq.foreach { colIndex =>
+           colMap(colIndex) = i
+           i += 1
+        }
+        zippedColRdd.map(cols => cond.checkWithColStrategy(cols, colMap))
     }
 
     /**
@@ -190,11 +194,9 @@ case class DF private (val sc: SparkContext,
      */
     def where(cond: Condition): DF = {
       if(useRowStrategy) {
-        val filteredRows = filterRowStrategy(cond)
-        fromRows(filteredRows)
+        fromRows(filterRowStrategy(cond))
       } else {
-        val filtration = filterColumnStrategy(cond)
-        DF(this, filtration)
+        DF(this, filterColumnStrategy(cond))
       }
     }
 
