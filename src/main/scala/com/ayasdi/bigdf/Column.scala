@@ -286,7 +286,7 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates due to fil
     /**
      * compare two columns
      */
-    def ==(that: Column[_]): Condition = {
+    def ==(that: Column[_]): Predicate = {
         if (tpe =:= ru.typeOf[Double] && that.tpe =:= ru.typeOf[Double])
             new DoubleColumnWithDoubleColumnCondition(index, that.index, DoubleOps.eqColumn)
         else if (tpe =:= ru.typeOf[String] && that.tpe =:= ru.typeOf[String])
@@ -294,7 +294,7 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates due to fil
         else
             null
     }
-    def >(that: Column[_]): Condition = {
+    def >(that: Column[_]): Predicate = {
         if (tpe =:= ru.typeOf[Double] && that.tpe =:= ru.typeOf[Double])
             new DoubleColumnWithDoubleColumnCondition(index, that.index, DoubleOps.gtColumn)
         else if (tpe =:= ru.typeOf[String] && that.tpe =:= ru.typeOf[String])
@@ -302,7 +302,7 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates due to fil
         else
             null
     }
-    def >=(that: Column[_]): Condition = {
+    def >=(that: Column[_]): Predicate = {
         if (tpe =:= ru.typeOf[Double] && that.tpe =:= ru.typeOf[Double])
             new DoubleColumnWithDoubleColumnCondition(index, that.index, DoubleOps.gteColumn)
         else if (tpe =:= ru.typeOf[String] && that.tpe =:= ru.typeOf[String])
@@ -310,7 +310,7 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates due to fil
         else
             null
     }
-    def <(that: Column[_]): Condition = {
+    def <(that: Column[_]): Predicate = {
         if (tpe =:= ru.typeOf[Double] && that.tpe =:= ru.typeOf[Double])
             new DoubleColumnWithDoubleColumnCondition(index, that.index, DoubleOps.ltColumn)
         else if (tpe =:= ru.typeOf[String] && that.tpe =:= ru.typeOf[String])
@@ -318,7 +318,7 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates due to fil
         else
             null
     }
-    def <=(that: Column[_]): Condition = {
+    def <=(that: Column[_]): Predicate = {
         if (tpe =:= ru.typeOf[Double] && that.tpe =:= ru.typeOf[Double])
             new DoubleColumnWithDoubleColumnCondition(index, that.index, DoubleOps.lteColumn)
         else if (tpe =:= ru.typeOf[String] && that.tpe =:= ru.typeOf[String])
@@ -326,7 +326,7 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates due to fil
         else
             null
     }
-    def !=(that: Column[_]): Condition = {
+    def !=(that: Column[_]): Predicate = {
         if (tpe =:= ru.typeOf[Double] && that.tpe =:= ru.typeOf[Double])
             new DoubleColumnWithDoubleColumnCondition(index, that.index, DoubleOps.neqColumn)
         else if (tpe =:= ru.typeOf[String] && that.tpe =:= ru.typeOf[String])

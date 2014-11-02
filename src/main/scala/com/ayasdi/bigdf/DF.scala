@@ -39,10 +39,14 @@ object ColumnType extends Enumeration {
 case class DF private (val sc: SparkContext,
                        val cols: HashMap[String, Column[Any]] = new HashMap[String, Column[Any]],
                        val colIndexToName: HashMap[Int, String] = new HashMap[Int, String]) {
-    val useRowStrategy = false
+  /**
+   *  for large number of columns, column based filtering is faster. it is the default. try changing this
+   *  to true for DF with few columns
+   */
+    var filterWithRowStrategy = false
     def numCols = cols.size
 
-  lazy val numRows = if (cols.head._2 == null) 0 else cols.head._2.rdd.count
+    lazy val numRows = if (cols.head._2 == null) 0 else cols.head._2.rdd.count
 
     override def toString() = {
         "Silence is golden" //otherwise prints too much stuff
@@ -77,6 +81,15 @@ case class DF private (val sc: SparkContext,
         }
     }
 
+  /**
+   *
+   * @param file save DF in this file
+   * @param separator use this separator, default is comma
+   */
+    def toCSV(file: String, separator: String = ",") = {
+      rowsRdd.map { row => row.mkString(separator) }.saveAsTextFile(file)
+    }
+
     /*
      * add column keys, returns number of columns added
      */
@@ -105,6 +118,7 @@ case class DF private (val sc: SparkContext,
 
     /**
      * get a column identified by name
+     * @param colName name of the column
      */
     def column(colName: String) = {
         val col = cols.getOrElse(colName, null)
@@ -113,11 +127,13 @@ case class DF private (val sc: SparkContext,
     }
     /**
      * get a column identified by name
+     * @param colName name of the column
      */
     def apply(colName: String) = column(colName)
 
     /**
-     * get multiple columns identified by name
+     * get multiple columns identified by names
+     * @param colNames names of columns
      */
     def columnsByNames(colNames: Seq[String]) = {
         val selectedCols = for (colName <- colNames)
@@ -134,6 +150,7 @@ case class DF private (val sc: SparkContext,
     /**
      * get columns with numeric index
      * FIXME: solo has to be "5 to 5" for now, should be just "5"
+     * @param indexRanges sequence of ranges like List(1 to 5, 13 to 15)
      */
     def columnsByRanges(indexRanges: Seq[Range]) = {
         val selectedCols = for (
@@ -147,9 +164,10 @@ case class DF private (val sc: SparkContext,
 
     /**
      * get columns with numeric index
+     * @param indices Sequence of indices like List(1, 3, 13)
      */
-    def columnsByIndexes(indexes: Seq[Int]) = {
-        val indexRanges = indexes.map { i => i to i }
+    def columnsByIndices(indices: Seq[Int]) = {
+        val indexRanges = indices.map { i => i to i }
         columnsByRanges(indexRanges)
     }
 
@@ -158,11 +176,11 @@ case class DF private (val sc: SparkContext,
      * e.g. myDF("x", "y")
      * or   myDF(0, 1, 6)
      * or   myDF(0 to 0, 4 to 10, 6 to 1000)
-     * Cannot mix and match for now
+     * @param items Sequence of names, indices or ranges. No mix n match yet
      */
     def apply[T: ru.TypeTag](items: T*): ColumnSeq = {
         val tpe = ru.typeOf[T]
-        if (tpe =:= ru.typeOf[Int]) columnsByIndexes(items.asInstanceOf[Seq[Int]])
+        if (tpe =:= ru.typeOf[Int]) columnsByIndices(items.asInstanceOf[Seq[Int]])
         else if (tpe =:= ru.typeOf[String]) columnsByNames(items.asInstanceOf[Seq[String]])
         else if (tpe =:= ru.typeOf[Range] || tpe =:= ru.typeOf[Range.Inclusive]) columnsByRanges(items.asInstanceOf[Seq[Range]])
         else { println("got " + tpe); null }
@@ -171,14 +189,14 @@ case class DF private (val sc: SparkContext,
     /*
      * usually more efficient if there are a few columns
      */
-    private def filterRowStrategy(cond: Condition) = {
+    private def filterRowStrategy(cond: Predicate) = {
         rowsRdd.filter(row => cond.checkWithRowStrategy(row))
     }
 
     /*
      * more efficient if there are a lot of columns
      */
-    private def filterColumnStrategy(cond: Condition) = {
+    private def filterColumnStrategy(cond: Predicate) = {
         val zippedColRdd = zipColumns(cond.colSeq)
         val colMap = new HashMap[Int, Int]
         var i = 0
@@ -191,9 +209,10 @@ case class DF private (val sc: SparkContext,
 
     /**
      * wrapper on filter to create a new DF from filtered RDD
+     * @param cond a predicate to filter on e.g. df("price") > 10
      */
-    def where(cond: Condition): DF = {
-      if(useRowStrategy) {
+    def where(cond: Predicate): DF = {
+      if(filterWithRowStrategy) {
         fromRows(filterRowStrategy(cond))
       } else {
         DF(this, filterColumnStrategy(cond))
@@ -203,7 +222,7 @@ case class DF private (val sc: SparkContext,
     /**
      * allow omitting keyword "where"
      */
-    def apply(cond: Condition) = where(cond)
+    def apply(cond: Predicate) = where(cond)
 
     /**
      * update a column, add or replace
@@ -562,7 +581,7 @@ object DF {
         val col = cols(colName)
         if(col.tpe =:= ru.typeOf[Double])
           cols(colName) = Column(applyFilter(col.number), i)
-        else if(col.tpe =:= ru.typeOf[Double])
+        else if(col.tpe =:= ru.typeOf[String])
           cols(colName) = Column(applyFilter(col.string), i)
         else
           println("Unexpected column type while column strategy filtering")

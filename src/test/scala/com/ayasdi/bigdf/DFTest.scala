@@ -6,6 +6,8 @@
 
 package com.ayasdi.bigdf
 
+import java.nio.file.{Paths, Files}
+
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.SparkContext._
@@ -16,14 +18,25 @@ import scala.reflect.runtime.universe._
 
 class DFTest extends FunSuite with BeforeAndAfterAll {
     var sc: SparkContext = _
+    val file: String = "/tmp/test_abcd.csv"
 
-    override def beforeAll {
+    def fileCleanup: Unit = {
+      try {
+        Files.deleteIfExists(Paths.get(file))
+      } catch {
+        case _: Throwable => println("Exception while deleting temp file")
+      }
+    }
+
+  override def beforeAll {
         SparkUtil.silenceSpark
         System.clearProperty("spark.master.port")
         sc = new SparkContext("local[4]", "abcd")
+        fileCleanup
     }
 
     override def afterAll {
+        fileCleanup
         sc.stop
     }
 
@@ -273,6 +286,12 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         }
         assert(bad.value === 0)
     }
+//
+//    test("toCSV") {
+//      val df = makeDF
+//      df.toCSV(file)
+//      assert(Files.exists(Paths.get(file)) === true)
+//    }
 }
 
 class DFTestWithKryo extends DFTest {

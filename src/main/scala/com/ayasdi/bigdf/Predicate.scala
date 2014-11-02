@@ -8,22 +8,22 @@ package com.ayasdi.bigdf
 import scala.reflect.runtime.{universe => ru}
 import scala.collection.mutable.HashMap
 
-abstract class Condition {
+abstract class Predicate {
     def checkWithRowStrategy(row: Array[Any]): Boolean
     def checkWithColStrategy(cols: Array[Any], colMap: HashMap[Int, Int]): Boolean
     def colSeq: List[Int]
 
-    def &&(that: Condition) = {
+    def &&(that: Predicate) = {
         new AndCondition(this, that)
     }
-    def &(that: Condition) = &&(that)
+    def &(that: Predicate) = &&(that)
 
-    def ||(that: Condition) = {
+    def ||(that: Predicate) = {
         new OrCondition(this, that)
     }
-    def |(that: Condition) = ||(that)
+    def |(that: Predicate) = ||(that)
 
-    def ^^(that: Condition) = {
+    def ^^(that: Predicate) = {
         new XorCondition(this, that)
     }
 
@@ -33,17 +33,17 @@ abstract class Condition {
     def unary_~ = unary_!
 }
 
-abstract class UnaryCondition(val colIndex: Int) extends Condition with Serializable {
+abstract class UnaryCondition(val colIndex: Int) extends Predicate with Serializable {
     def colSeq = List(colIndex)
 }
 
 abstract class BinaryCondition(val colIndexLeft: Int,
-                               val colIndexRight: Int) extends Condition with Serializable {
+                               val colIndexRight: Int) extends Predicate with Serializable {
     def colSeq = List(colIndexLeft, colIndexRight)
 }
 
-abstract class CompoundCondition(val left: Condition,
-                                 val right: Condition) extends Condition with Serializable {
+abstract class CompoundCondition(val left: Predicate,
+                                 val right: Predicate) extends Predicate with Serializable {
     def colSeq = left.colSeq ++ right.colSeq
 }
 
@@ -96,20 +96,20 @@ case class StringColumnWithStringColumnCondition(i: Int, j: Int,
     }
 }
 
-case class AndCondition(l: Condition, r: Condition) extends CompoundCondition(l, r) {
+case class AndCondition(l: Predicate, r: Predicate) extends CompoundCondition(l, r) {
     def checkWithRowStrategy(row: Array[Any]) = left.checkWithRowStrategy(row) && right.checkWithRowStrategy(row)
     def checkWithColStrategy(cols: Array[Any], colMap: HashMap[Int, Int]) = {
       left.checkWithColStrategy(cols, colMap) && right.checkWithColStrategy(cols, colMap)
     }
 }
 
-case class OrCondition(l: Condition, r: Condition) extends CompoundCondition(l, r) {
+case class OrCondition(l: Predicate, r: Predicate) extends CompoundCondition(l, r) {
     def checkWithRowStrategy(row: Array[Any]) = left.checkWithRowStrategy(row) || right.checkWithRowStrategy(row)
     def checkWithColStrategy(cols: Array[Any], colMap: HashMap[Int, Int]) =
       left.checkWithColStrategy(cols, colMap) || right.checkWithColStrategy(cols, colMap)
 }
 
-case class XorCondition(l: Condition, r: Condition) extends CompoundCondition(l, r) {
+case class XorCondition(l: Predicate, r: Predicate) extends CompoundCondition(l, r) {
     def checkWithRowStrategy(row: Array[Any]) = {
         val a = left.checkWithRowStrategy(row)
         val b = right.checkWithRowStrategy(row)
@@ -125,7 +125,7 @@ case class XorCondition(l: Condition, r: Condition) extends CompoundCondition(l,
     }
 }
 
-case class NotCondition(val cond: Condition) extends Condition {
+case class NotCondition(val cond: Predicate) extends Predicate {
     def checkWithRowStrategy(row: Array[Any]) = !cond.checkWithRowStrategy(row)
     def checkWithColStrategy(cols: Array[Any], colMap: HashMap[Int, Int]) = !cond.checkWithColStrategy(cols, colMap)
     def colSeq = cond.colSeq
