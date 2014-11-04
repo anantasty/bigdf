@@ -42,7 +42,7 @@ private[bigdf] case class PivotHelper(grped: RDD[(Any, Iterable[Array[Any]])],
     }
 }
 
-abstract case class Aggregator[U] {
+abstract case class Aggregator[U, V] {
     var colIndex: Int = -1
     def convert(a: Array[Any]): U = {
         a(colIndex).asInstanceOf[U]
@@ -58,4 +58,6 @@ abstract case class Aggregator[U] {
      * user supplied aggregator
      */
     def aggregate(p: U, q: U): U
+
+    def finalize(x: U): V = x.asInstanceOf[V]
 }

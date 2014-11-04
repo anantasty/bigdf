@@ -9,6 +9,7 @@ import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
 import org.apache.spark.rdd.{DoubleRDDFunctions, RDD}
 import org.apache.spark.util.StatCounter
+import org.apache.spark.storage.StorageLevel
 
 import scala.reflect.runtime.{universe => ru}
 import scala.reflect.{ClassTag, classTag}
@@ -546,7 +547,7 @@ case object StringOps {
 }
 
 object Column {
-    def asDoubles(sc: SparkContext, stringRdd: RDD[String], index: Int) = {
+    def asDoubles(sc: SparkContext, stringRdd: RDD[String], index: Int, cacheLevel: StorageLevel) = {
         val parseErrors = sc.accumulator(0L)
         val doubleRdd = stringRdd map { x =>
             var y = Double.NaN
@@ -557,12 +558,13 @@ object Column {
             }
             y
         }
+        doubleRdd.setName(s"${stringRdd.name}/double").persist(cacheLevel)
         doubleRdd.foreach { x: Double => {} } //to trigger accumulation of parseErrors
         new Column[Double](doubleRdd, index, parseErrors.value)
     }
 
-    def asDoubles(sc: SparkContext, col: Column[String], index: Int): Column[Double] = {
-    	asDoubles(sc, col.rdd, index)
+    def asDoubles(sc: SparkContext, col: Column[String], index: Int, cacheLevel: StorageLevel): Column[Double] = {
+    	asDoubles(sc, col.rdd, index, cacheLevel)
     }
 
     /**
