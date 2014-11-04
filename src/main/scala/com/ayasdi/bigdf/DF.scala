@@ -53,6 +53,10 @@ case class DF private (val sc: SparkContext,
      */
     var defaultStorageLevel: StorageLevel = MEMORY_ONLY_SER
 
+    def colNames = {
+      (0 until numCols).map{ colIndex => colIndexToName(colIndex) }.toArray
+    }
+
     /**
      * number of columns in df
      * @return number of columns
@@ -491,7 +495,7 @@ object DF {
      * create DF from a text file with given separator
      * first line of file is a header
      */
-    def apply(sc: SparkContext, inFile: String, separator: Char): DF = {
+    def apply(sc: SparkContext, inFile: String, separator: Char, fasterGuess: Boolean): DF = {
         val df: DF = DF(sc, "inFile")
         df.defaultStorageLevel = MEMORY_ONLY_SER   //FIXME: allow changing this
         val csvFormat = CSVFormat.DEFAULT.withDelimiter(separator).withIgnoreSurroundingSpaces(true)
@@ -569,7 +573,7 @@ object DF {
 
         var i = 0
         columns.foreach { col =>
-            val t = guessType3(columns(i))
+            val t = if(fasterGuess) guessType3(columns(i)) else guessType(columns(i))
             col.setName(s"$t/$inFile/${df.colIndexToName(i)}")
             println(s"Column: ${df.colIndexToName(i)} \t\t\tGuessed Type: ${t}")
             if (t == ColumnType.Double) {

@@ -77,7 +77,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
     }
 
     private def makeDFFromCSVFile(file: String) = {
-        DF(sc, file, ',')
+        DF(sc, file, ',', false)
     }
 
     test("Construct: DF from Vector") {
@@ -98,6 +98,11 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         assert(col.tpe === typeOf[Double])
         assert(col.index === 0)
         assert(col.rdd.count === 3)
+    }
+
+    test("Array of column names") {
+      val df = makeDF
+      assert(df.colNames ===  Array("a", "b", "c", "Date"))
     }
 
     test("Column Index: Refer to non-existent column of a DF") {
@@ -153,7 +158,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
 
     test("Parsing: Parse doubles") {
         val df = makeDFFromCSVFile("src/test/resources/mixedDoubles.csv")
-//        assert(df("Feature1").parseErrors === 1)
+        assert(df("Feature1").parseErrors === 1)
     }
 
     test("Filter/Select: Double Column comparisons with Scalar") {
