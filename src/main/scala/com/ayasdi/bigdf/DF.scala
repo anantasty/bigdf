@@ -5,20 +5,19 @@
  */
 package com.ayasdi.bigdf
 
-import scala.collection.mutable.HashMap
-import scala.util.Try
+import com.ayasdi.bigdf.Preamble._
+import org.apache.commons.csv._
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
 import org.apache.spark.rdd.RDD
-import org.apache.commons.csv._
-import scala.reflect.ClassTag
-import scala.reflect.runtime.universe._
-import scala.reflect.ClassTag
-import com.ayasdi.bigdf.Preamble._
+import org.apache.spark.storage.StorageLevel
+import org.apache.spark.storage.StorageLevel.MEMORY_ONLY_SER
+
 import scala.collection.JavaConversions
-import scala.reflect.{ ClassTag, classTag }
-import scala.reflect.runtime.{ universe => ru }
-import scala.util.Random
+import scala.collection.mutable.HashMap
+import scala.reflect.{ClassTag, classTag}
+import scala.reflect.runtime.{universe => ru}
+import scala.util.{Random, Try}
 
 /**
  * types of joins
@@ -41,8 +40,33 @@ object ColumnType extends Enumeration {
  */
 case class DF private (val sc: SparkContext,
                        val cols: HashMap[String, Column[Any]] = new HashMap[String, Column[Any]],
-                       val colIndexToName: HashMap[Int, String] = new HashMap[Int, String]) {
+                       val colIndexToName: HashMap[Int, String] = new HashMap[Int, String],
+                       val name: String) {
+    /**
+     *  for large number of columns, column based filtering is faster. it is the default. try changing this
+     *  to true for DF with few columns
+     */
+    var filterWithRowStrategy = false
+
+    /**
+     * default rdd caching storage level
+     */
+    var defaultStorageLevel: StorageLevel = MEMORY_ONLY_SER
+
+    def colNames = {
+      (0 until numCols).map{ colIndex => colIndexToName(colIndex) }.toArray
+    }
+
+    /**
+     * number of columns in df
+     * @return number of columns
+     */
     def numCols = cols.size
+
+    /**
+     * number of rows in df
+     * @return number of rows
+     */
     lazy val numRows = if (cols.head._2 == null) 0 else cols.head._2.rdd.count
 
     override def toString() = {
@@ -50,25 +74,41 @@ case class DF private (val sc: SparkContext,
     }
 
     /*
-     * columns are zip'd together to get rows
+     *   zip the given list of columns into arrays
      */
-    private def computeRows: RDD[Array[Any]] = {
-        val first = cols(colIndexToName(0)).rdd
-        val rest = (1 until colIndexToName.size).toList.map { i => cols(colIndexToName(i)).rdd }
+    private def zipColumns(colIndices: Seq[Int]): RDD[Array[Any]] = {
+        val first = cols(colIndexToName(colIndices.head)).rdd
+        val rest = colIndices.tail.map { i => cols(colIndexToName(i)).rdd }
 
         //if you get a compile error here, you have the wrong spark
         //get my forked version or patch yours from my pull request
-        //https://github.com/apache/spark/pull/2429  
-        first.zip(rest) //if you get a compile error here, you have the wrong spark
+        //https://github.com/apache/spark/pull/2429
+        first.zip(rest)
+    }
+
+    /*
+     * columns are zip'd together to get rows, expensive operation
+     */
+    private def computeRows: RDD[Array[Any]] = {
+        zipColumns((0 until colIndexToName.size).toList)
     }
     private var rowsRddCached: RDD[Array[Any]] = null
     def rowsRdd = {
         if (rowsRddCached != null) {
-            rowsRddCached
+          rowsRddCached
         } else {
-            rowsRddCached = computeRows
-            rowsRddCached
+          rowsRddCached = computeRows
+          rowsRddCached.setName(s"${name}").persist(defaultStorageLevel)
         }
+    }
+
+  /**
+   *
+   * @param file save DF in this file
+   * @param separator use this separator, default is comma
+   */
+    def toCSV(file: String, separator: String = ",") = {
+      rowsRdd.map { row => row.mkString(separator) }.saveAsTextFile(file)
     }
 
     /*
@@ -87,7 +127,7 @@ case class DF private (val sc: SparkContext,
             val cleanedColName = if(cols.contains(colName)) {
                 println(s"Duplicate column ${colName} renamed")
                 colName + "_"
-            } else { 
+            } else {
                 colName
             }
             cols.put(cleanedColName, null)
@@ -99,6 +139,7 @@ case class DF private (val sc: SparkContext,
 
     /**
      * get a column identified by name
+     * @param colName name of the column
      */
     def column(colName: String) = {
         val col = cols.getOrElse(colName, null)
@@ -107,11 +148,13 @@ case class DF private (val sc: SparkContext,
     }
     /**
      * get a column identified by name
+     * @param colName name of the column
      */
     def apply(colName: String) = column(colName)
 
     /**
-     * get multiple columns identified by name
+     * get multiple columns identified by names
+     * @param colNames names of columns
      */
     def columnsByNames(colNames: Seq[String]) = {
         val selectedCols = for (colName <- colNames)
@@ -128,6 +171,7 @@ case class DF private (val sc: SparkContext,
     /**
      * get columns with numeric index
      * FIXME: solo has to be "5 to 5" for now, should be just "5"
+     * @param indexRanges sequence of ranges like List(1 to 5, 13 to 15)
      */
     def columnsByRanges(indexRanges: Seq[Range]) = {
         val selectedCols = for (
@@ -141,10 +185,10 @@ case class DF private (val sc: SparkContext,
 
     /**
      * get columns with numeric index
-     * FIXME: solo has to be "5 to 5" for now, should be just "5"
+     * @param indices Sequence of indices like List(1, 3, 13)
      */
-    def columnsByIndexes(indexes: Seq[Int]) = {
-        val indexRanges = indexes.map { i => i to i }
+    def columnsByIndices(indices: Seq[Int]) = {
+        val indexRanges = indices.map { i => i to i }
         columnsByRanges(indexRanges)
     }
 
@@ -153,11 +197,11 @@ case class DF private (val sc: SparkContext,
      * e.g. myDF("x", "y")
      * or   myDF(0, 1, 6)
      * or   myDF(0 to 0, 4 to 10, 6 to 1000)
-     * Cannot mix and match for now
+     * @param items Sequence of names, indices or ranges. No mix n match yet
      */
     def apply[T: ru.TypeTag](items: T*): ColumnSeq = {
         val tpe = ru.typeOf[T]
-        if (tpe =:= ru.typeOf[Int]) columnsByIndexes(items.asInstanceOf[Seq[Int]])
+        if (tpe =:= ru.typeOf[Int]) columnsByIndices(items.asInstanceOf[Seq[Int]])
         else if (tpe =:= ru.typeOf[String]) columnsByNames(items.asInstanceOf[Seq[String]])
         else if (tpe =:= ru.typeOf[Range] || tpe =:= ru.typeOf[Range.Inclusive]) columnsByRanges(items.asInstanceOf[Seq[Range]])
         else { println("got " + tpe); null }
@@ -166,30 +210,40 @@ case class DF private (val sc: SparkContext,
     /*
      * usually more efficient if there are a few columns
      */
-    private def filterRowStrategy(cond: Condition) = {
-        rowsRdd.filter(row => cond.check(row))
+    private def filterRowStrategy(cond: Predicate) = {
+        rowsRdd.filter(row => cond.checkWithRowStrategy(row))
     }
 
     /*
      * more efficient if there are a lot of columns
-     * FIXME: write this code
      */
-    private def filterColumnStrategy(cond: Condition) = {
-        ???
+    private def filterColumnStrategy(cond: Predicate) = {
+        val zippedColRdd = zipColumns(cond.colSeq)
+        val colMap = new HashMap[Int, Int]
+        var i = 0
+        cond.colSeq.foreach { colIndex =>
+           colMap(colIndex) = i
+           i += 1
+        }
+        zippedColRdd.map(cols => cond.checkWithColStrategy(cols, colMap))
     }
 
     /**
      * wrapper on filter to create a new DF from filtered RDD
+     * @param cond a predicate to filter on e.g. df("price") > 10
      */
-    def where(cond: Condition): DF = {
-        val filteredRows = filterRowStrategy(cond)
-        fromRows(filteredRows)
+    def where(cond: Predicate): DF = {
+      if(filterWithRowStrategy) {
+        fromRows(filterRowStrategy(cond))
+      } else {
+        DF(this, filterColumnStrategy(cond))
+      }
     }
 
     /**
      * allow omitting keyword "where"
      */
-    def apply(cond: Condition) = where(cond)
+    def apply(cond: Predicate) = where(cond)
 
     /**
      * update a column, add or replace
@@ -200,6 +254,7 @@ case class DF private (val sc: SparkContext,
         cols.put(colName, that)
         if (col != null) {
             println(s"Replaced Column: ${colName}")
+            that.index = col.index
         } else {
             println(s"New Column: ${colName} ")
             val colIndex = colIndexToName.size
@@ -214,7 +269,7 @@ case class DF private (val sc: SparkContext,
      * rename columns, modify same DF or make a new one
      */
     def rename(columns: Map[String, String], inPlace: Boolean = true) = {
-        val df = if (inPlace == false) new DF(sc, cols.clone, colIndexToName.clone) else this
+        val df = if (inPlace == false) new DF(sc, cols.clone, colIndexToName.clone, name) else this
 
         columns.foreach {
             case (oldName, newName) =>
@@ -283,9 +338,44 @@ case class DF private (val sc: SparkContext,
     /**
      * aggregate one column after grouping by another
      */
-    def aggregate[U: ClassTag](aggByCol: String, aggedCol: String, aggtor: Aggregator[U]) = {
+    def aggregate[U: ClassTag, V: ClassTag](aggByCol: String, aggedCol: String, aggtor: Aggregator[U, V]) = {
+        val vtpe = classTag[V]
+        val newDf = DF(sc, s"${name}_${aggByCol}_agg_${aggedCol}")
+        newDf.addHeader(Array(aggByCol, aggedCol))
         aggtor.colIndex = cols(aggedCol).index
-        keyBy(aggByCol).combineByKey(aggtor.convert, aggtor.mergeValue, aggtor.mergeCombiners)
+        val aggedRdd = keyBy(aggByCol).combineByKey(aggtor.convert, aggtor.mergeValue, aggtor.mergeCombiners)
+
+        if (cols(aggByCol).tpe =:= ru.typeOf[Double]) {
+          val col1 = aggedRdd.map { case(k,v) =>
+            k.asInstanceOf[Double]
+          }
+          newDf.update(aggByCol, Column.newDoubleColumn(col1, 0))
+        } else if (cols(aggByCol).tpe =:= ru.typeOf[String]) {
+          val col1 = aggedRdd.map { case(k,v) =>
+            k.asInstanceOf[String]
+          }
+          newDf.update(aggByCol, Column.newStringColumn(col1, 1))
+        } else {
+          println("ERROR: aggregate key type" + cols(aggByCol).tpe)
+        }
+
+
+        if (vtpe == classTag[Double]) {
+          val col1 = aggedRdd.map { case(k,v) =>
+            aggtor.finalize(v)
+          }.asInstanceOf[RDD[Double]]
+          newDf.update(aggedCol, Column.newDoubleColumn(col1, 0))
+        } else if (vtpe == classTag[String]) {
+          val col1 = aggedRdd.map { case(k,v) =>
+            aggtor.finalize(v)
+          }.asInstanceOf[RDD[String]]
+          newDf.update(aggedCol, Column.newStringColumn(col1, 1))
+        }  else {
+          println("ERROR: aggregate value type" + vtpe)
+        }
+
+
+      newDf
     }
 
     /**
@@ -318,7 +408,7 @@ case class DF private (val sc: SparkContext,
         val pivotIndex = cols.getOrElse(pivotByCol, null).index
         val cleanedPivotedCols = pivotedCols.filter { _ != cols(pivotByCol).index }
 
-        val newDf = DF(sc)
+        val newDf = DF(sc, s"${name}_${keyCol}_pivot_${pivotByCol}")
         pivotValues.foreach { pivotValue =>
             val grpSplit = new PivotHelper(grped, pivotIndex, pivotValue).get
             cleanedPivotedCols.foreach { pivotedColIndex =>
@@ -370,7 +460,7 @@ case class DF private (val sc: SparkContext,
     }
 
     private def fromRows(filteredRows: RDD[Array[Any]]) = {
-        val df = new DF(sc, cols.clone, colIndexToName.clone)
+        val df = new DF(sc, cols.clone, colIndexToName.clone, name + "-fromRows")
 
         val firstRowOption = Try { filteredRows.first }.toOption
         if (firstRowOption.nonEmpty) {
@@ -400,20 +490,25 @@ case class DF private (val sc: SparkContext,
 }
 
 object DF {
-    /**
+
+  /**
      * create DF from a text file with given separator
      * first line of file is a header
      */
-    def apply(sc: SparkContext, inFile: String, separator: Char): DF = {
-        val df: DF = DF(sc)
-        val csvFormat = CSVFormat.DEFAULT.withDelimiter(separator)
+    def apply(sc: SparkContext, inFile: String, separator: Char, fasterGuess: Boolean): DF = {
+        val df: DF = DF(sc, "inFile")
+        df.defaultStorageLevel = MEMORY_ONLY_SER   //FIXME: allow changing this
+        val csvFormat = CSVFormat.DEFAULT.withDelimiter(separator).withIgnoreSurroundingSpaces(true)
         val file = sc.textFile(inFile)
         val firstLine = file.first
         val header = CSVParser.parse(firstLine, csvFormat).iterator.next
         println(s"Found ${header.size} columns")
         df.addHeader(JavaConversions.asScalaIterator(header.iterator))
 
-        val dataLines = file.filter(_ != firstLine)
+        val dataLines = file.mapPartitionsWithIndex ({
+          case (partitionIndex, iter) => if(partitionIndex == 0) iter.drop(1) else iter
+        }, true)
+        dataLines.setName(s"data/$inFile")
 
         /*
          * guess the type of a column by looking at a random sample
@@ -432,6 +527,24 @@ object DF {
             else
                 ColumnType.Double
         }
+      /*
+       * guess the type of a column by looking at a random sample
+       * however, this is slow because spark will cause all data to be
+       * materialized before it can be sampled
+       */
+        def guessType3(col: RDD[String]) = {
+          val samples = col.take(5)
+          val parseFailCount = samples.filter { str =>
+            Try {
+              str.toDouble
+            }.toOption == None
+          }.length
+
+          if (parseFailCount > 0)
+            ColumnType.String
+          else
+            ColumnType.Double
+        }
 
         /*
          * guess the type of a column by looking at the first element
@@ -445,7 +558,6 @@ object DF {
                 } catch {
                     case _: java.lang.NumberFormatException => parseErrors += 1
                 }
-
             }
             if (parseErrors.value > 0)
                 ColumnType.String
@@ -454,21 +566,27 @@ object DF {
         }
 
         val rows = dataLines.map { CSVParser.parse(_, csvFormat).iterator.next }
+                .persist(df.defaultStorageLevel).setName(s"csvRecord/$inFile")
         val columns = for (i <- 0 until df.numCols) yield {
-            rows.map { _.get(i) }
+            rows.map { _.get(i) }.persist(df.defaultStorageLevel)
         }
 
         var i = 0
         columns.foreach { col =>
-            val t = guessType(columns(i))
+            val t = if(fasterGuess) guessType3(columns(i)) else guessType(columns(i))
+            col.setName(s"$t/$inFile/${df.colIndexToName(i)}")
             println(s"Column: ${df.colIndexToName(i)} \t\t\tGuessed Type: ${t}")
-            if (t == ColumnType.Double)
-                df.cols.put(df.colIndexToName(i), Column.asDoubles(sc, col, i))
-            else
-                df.cols.put(df.colIndexToName(i), Column(col, i))
+            if (t == ColumnType.Double) {
+              df.cols.put(df.colIndexToName(i), Column.asDoubles(sc, col, i, df.defaultStorageLevel))
+              col.unpersist()
+            }
+            else {
+              df.cols.put(df.colIndexToName(i), Column(col, i))
+              col.persist(df.defaultStorageLevel)
+            }
             i += 1
-            col.cache
         }
+        //rows.unpersist()
         df
     }
 
@@ -479,7 +597,7 @@ object DF {
         require(header.length == vec.length)
         require(vec.map { _.length }.toSet.size == 1)
 
-        val df = DF(sc)
+        val df = DF(sc, "from_vector")
         df.addHeader(header.toArray)
 
         var i = 0
@@ -504,7 +622,7 @@ object DF {
      * create a DF from a ColumnSeq
      */
     def apply(sc: SparkContext, colSeq: ColumnSeq): DF = {
-        val df = DF(sc)
+        val df = DF(sc, "colseq")
         val header = colSeq.cols.map { _._1 }
         val columns = colSeq.cols.map { _._2 }
 
@@ -522,7 +640,7 @@ object DF {
      * create a DF from a Column
      */
     def apply(sc: SparkContext, name: String, col: Column[Double]): DF = {
-        val df = DF(sc)
+        val df = DF(sc, "col")
         val i = df.addHeader(Array(name))
         df.cols.put(df.colIndexToName(i - 1), col)
         df
@@ -531,11 +649,34 @@ object DF {
     /**
      * make an empty DF
      */
-    def apply(sc: SparkContext) = {
-        new DF(sc, new HashMap[String, Column[Any]], new HashMap[Int, String])
+    def apply(sc: SparkContext, name: String) = {
+        new DF(sc, new HashMap[String, Column[Any]], new HashMap[Int, String], name)
     }
 
-    def joinRdd(sc: SparkContext, left: DF, right: DF, on: String, how: JoinType.JoinType = JoinType.Inner) = {
+    /**
+     * make a filtered DF
+     */
+    def apply(df: DF, filtration: RDD[Boolean]) = {
+      val cols = df.cols.clone
+      for(i <- 0 until df.numCols) {
+        def applyFilter[T: ClassTag](in: RDD[T]) = {
+          in.zip(filtration).filter { _._2 == true }.map { _._1 }
+        }
+        val colName = df.colIndexToName(i)
+        val col = cols(colName)
+        if(col.tpe =:= ru.typeOf[Double])
+          cols(colName) = Column(applyFilter(col.number), i)
+        else if(col.tpe =:= ru.typeOf[String])
+          cols(colName) = Column(applyFilter(col.string), i)
+        else
+          println("Unexpected column type while column strategy filtering")
+      }
+      println(cols)
+      new DF(df.sc, cols, df.colIndexToName.clone, "filtered")
+    }
+
+
+  def joinRdd(sc: SparkContext, left: DF, right: DF, on: String, how: JoinType.JoinType = JoinType.Inner) = {
         val leftWithKey = left.cols(on).rdd.zip(left.rowsRdd)
         val rightWithKey = right.cols(on).rdd.zip(right.rowsRdd)
         leftWithKey.join(rightWithKey)
@@ -556,7 +697,7 @@ object DF {
      * relational-like join two DFs
      */
     def join(sc: SparkContext, left: DF, right: DF, on: String, how: JoinType.JoinType = JoinType.Inner) = {
-        val df = DF(sc)
+        val df = DF(sc, "joined")
         val joinedRows = joinRdd(sc, left, right, on, how)
         val firstRow = joinedRows.first
 

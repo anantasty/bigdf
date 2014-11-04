@@ -6,28 +6,37 @@
 
 package com.ayasdi.bigdf
 
-import scala.collection.TraversableOnce.MonadOps
-import org.apache.log4j.Level
-import org.apache.log4j.Logger
-import org.apache.spark.SparkContext
+import java.nio.file.{Paths, Files}
+
+import org.apache.log4j.{Level, Logger}
+import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.SparkContext._
-import org.scalatest.FunSuite
-import com.ayasdi.bigdf._
-import org.scalatest.BeforeAndAfterAll
-import org.apache.spark.rdd.DoubleRDDFunctions
+import org.scalatest.{BeforeAndAfterAll, FunSuite}
+
+import scala.collection.TraversableOnce.MonadOps
 import scala.reflect.runtime.universe._
-import org.apache.spark.SparkConf
 
 class DFTest extends FunSuite with BeforeAndAfterAll {
     var sc: SparkContext = _
+    val file: String = "/tmp/test_abcd.csv"
 
-    override def beforeAll {
+    def fileCleanup: Unit = {
+      try {
+        Files.deleteIfExists(Paths.get(file))
+      } catch {
+        case _: Throwable => println("Exception while deleting temp file")
+      }
+    }
+
+  override def beforeAll {
         SparkUtil.silenceSpark
         System.clearProperty("spark.master.port")
         sc = new SparkContext("local[4]", "abcd")
+        fileCleanup
     }
 
     override def afterAll {
+        fileCleanup
         sc.stop
     }
 
@@ -68,7 +77,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
     }
 
     private def makeDFFromCSVFile(file: String) = {
-        DF(sc, file, ',')
+        DF(sc, file, ',', false)
     }
 
     test("Construct: DF from Vector") {
@@ -89,6 +98,11 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         assert(col.tpe === typeOf[Double])
         assert(col.index === 0)
         assert(col.rdd.count === 3)
+    }
+
+    test("Array of column names") {
+      val df = makeDF
+      assert(df.colNames ===  Array("a", "b", "c", "Date"))
     }
 
     test("Column Index: Refer to non-existent column of a DF") {
@@ -151,7 +165,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         val df = makeDF
         val dfEq12 = df(df("a") == 12.0)
         assert(dfEq12.numRows === 1)
-        val dfNe12 = df(df("a") != 12)
+        val dfNe12 = df(df("a") != 12.0)
         assert(dfNe12.numRows === 2)
         val dfGt12 = df(df("a") > 12)
         assert(dfGt12.numRows === 1)
@@ -257,9 +271,12 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         val df = makeDF
         df("groupByThis") = df("a").map { x => 1.0 }
         val sumOfA = df.aggregate("groupByThis", "a", AggSimple)
-        assert(sumOfA.first._2 === df("a").number.sum)
+//        assert(sumOfA.first._2 === df("a").number.sum)
+        assert(sumOfA("a").number.first === df("a").number.sum)
         val arrOfA = df.aggregate("groupByThis", "a", AggCustom)
-        assert(arrOfA.first._2 === Array(11.0, 12.0, 13.0))
+//        assert(arrOfA.first._2 === Array(11.0, 12.0, 13.0))
+        assert(arrOfA("a").number.first === df("a").number.sum)
+
     }
 
     test("Pivot") {
@@ -277,6 +294,12 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         }
         assert(bad.value === 0)
     }
+//
+//    test("toCSV") {
+//      val df = makeDF
+//      df.toCSV(file)
+//      assert(Files.exists(Paths.get(file)) === true)
+//    }
 }
 
 class DFTestWithKryo extends DFTest {
@@ -292,13 +315,14 @@ class DFTestWithKryo extends DFTest {
     }
 }
 
-object AggSimple extends Aggregator[Double] {
+object AggSimple extends Aggregator[Double, Double] {
     def aggregate(a: Double, b: Double) = a + b
 }
 
-object AggCustom extends Aggregator[Array[Double]] {
+object AggCustom extends Aggregator[Array[Double], Double] {
     override def convert(a: Array[Any]): Array[Double] = { Array(a(colIndex).asInstanceOf[Double]) }
     def aggregate(a: Array[Double], b: Array[Double]) = a ++ b
+    override def finalize(x: Array[Double]) = x.sum
 }
 
 case object TestFunctions {
