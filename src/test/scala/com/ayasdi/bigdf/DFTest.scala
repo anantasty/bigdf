@@ -15,6 +15,7 @@ import org.scalatest.{BeforeAndAfterAll, FunSuite}
 
 import scala.collection.TraversableOnce.MonadOps
 import scala.reflect.runtime.universe._
+import scala.reflect.runtime.{universe => ru}
 
 class DFTest extends FunSuite with BeforeAndAfterAll {
     var sc: SparkContext = _
@@ -28,7 +29,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
       }
     }
 
-  override def beforeAll {
+    override def beforeAll {
         SparkUtil.silenceSpark
         System.clearProperty("spark.master.port")
         sc = new SparkContext("local[4]", "abcd")
@@ -158,7 +159,11 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
 
     test("Parsing: Parse doubles") {
         val df = makeDFFromCSVFile("src/test/resources/mixedDoubles.csv")
-        assert(df("Feature1").parseErrors === 1)
+        df.cols.foreach { col =>
+          if(col._2.tpe =:= ru.typeOf[Double]) col._2.number.collect
+          else null
+        }
+        assert(df("Feature1").parseErrors.value === 1)
     }
 
     test("Filter/Select: Double Column comparisons with Scalar") {
