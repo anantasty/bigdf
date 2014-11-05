@@ -42,6 +42,12 @@ private[bigdf] case class PivotHelper(grped: RDD[(Any, Iterable[Array[Any]])],
     }
 }
 
+/**
+ * Extend this class to do aggregations. Implement aggregate method.
+ * Optionally override convert and finalize
+ * @tparam U
+ * @tparam V
+ */
 abstract case class Aggregator[U, V] {
     var colIndex: Int = -1
     def convert(a: Array[Any]): U = {
@@ -60,4 +66,44 @@ abstract case class Aggregator[U, V] {
     def aggregate(p: U, q: U): U
 
     def finalize(x: U): V = x.asInstanceOf[V]
+}
+
+private[bigdf] object ColumnZipper {
+  /**
+   * zip columns to get rows as arrays
+   * @param cols
+   * @return RDD of columns zipped into Arrays
+   */
+  def apply(cols: Seq[Column[Any]]): RDD[Array[Any]] = {
+    val first = cols.head.rdd
+    val rest = cols.tail.map { _.rdd }
+
+    //if you get a compile error here, you have the wrong spark
+    //get my forked version or patch yours from my pull request
+    //https://github.com/apache/spark/pull/2429
+    first.zip(rest)
+  }
+
+  /**
+   * zip columns to get rows as arrays
+   * @param df
+   * @param indices
+   * @return RDD of columns zipped into Arrays
+   */
+   def apply(df: DF, indices: Seq[Int]): RDD[Array[Any]] = {
+    val cols = indices.map{ colIndex => df.cols(df.colIndexToName(colIndex))}
+    apply(cols)
+  }
+
+  /**
+   *  zip columns to get rows as lists
+   * @param df
+   * @param indices
+   * @return
+   */
+  def zip(df: DF, indices: Seq[Int]) = {
+    val arrays = apply(df, indices)
+    arrays.map{ _.toList }
+  }
+
 }

@@ -27,7 +27,7 @@ object JoinType extends Enumeration {
     val Inner, Outer = Value
 }
 
-object ColumnType extends Enumeration {
+object ColumnType extends Enumeration {     //FIXME: get rid of this enum
     type ColumnType = Value
     val String, Double = Value
 }
@@ -75,23 +75,10 @@ case class DF private (val sc: SparkContext,
     }
 
     /*
-     *   zip the given list of columns into arrays
-     */
-    private def zipColumns(colIndices: Seq[Int]): RDD[Array[Any]] = {
-        val first = cols(colIndexToName(colIndices.head)).rdd
-        val rest = colIndices.tail.map { i => cols(colIndexToName(i)).rdd }
-
-        //if you get a compile error here, you have the wrong spark
-        //get my forked version or patch yours from my pull request
-        //https://github.com/apache/spark/pull/2429
-        first.zip(rest)
-    }
-
-    /*
      * columns are zip'd together to get rows, expensive operation
      */
     private def computeRows: RDD[Array[Any]] = {
-        zipColumns((0 until numCols).toList)
+        ColumnZipper(this, (0 until numCols).toList)
     }
     private var rowsRddCached: RDD[Array[Any]] = null
     def rowsRdd = {
@@ -223,7 +210,7 @@ case class DF private (val sc: SparkContext,
      * more efficient if there are a lot of columns
      */
     private def filterColumnStrategy(cond: Predicate) = {
-        val zippedColRdd = zipColumns(cond.colSeq)
+        val zippedColRdd = ColumnZipper(this,cond.colSeq)
         val colMap = new HashMap[Int, Int] //FIXME: switch to a fast map here
         var i = 0
         cond.colSeq.foreach { colIndex =>
@@ -319,27 +306,27 @@ case class DF private (val sc: SparkContext,
      * augment with key, resulting RDD is a pair with k=array[any]
      * and value=array[any]
      */
-    private def keyBy(colNames: Seq[String], valueRdd: RDD[Array[Any]] = rowsRdd) = {
+    private def keyBy(colNames: Seq[String], valueRdd: RDD[Array[Any]]) = {
       val columns = colNames.map { cols(_).index }
-      zipColumns(columns)
+      ColumnZipper(this, columns)
     }.zip(valueRdd)
 
-    private def keyBy(colName: String) = {
+    private def keyBy(colName: String, valueRdd: RDD[Array[Any]]) = {
       cols(colName).rdd
-    }.zip(rowsRdd)
+    }.zip(valueRdd)
 
     /**
      * group by a column, uses a lot of memory. try to use aggregate(By) instead if possible
      */
     def groupBy(colName: String) = {
-        keyBy(colName).groupByKey
+        keyBy(colName, rowsRdd).groupByKey
     }
 
     /**
      * group by multiple columns, uses a lot of memory. try to use aggregate(By) instead if possible
      */
     def groupBy(colNames: String*) = {
-        keyBy(colNames).groupByKey
+        keyBy(colNames, rowsRdd).groupByKey
     }
 
     /**
@@ -348,30 +335,29 @@ case class DF private (val sc: SparkContext,
     private def aggregateWithColumnStrategy[U: ClassTag, V: ClassTag]
         (aggdByCols: Seq[String], aggdCols: Seq[String], aggtor: Aggregator[U, V]) = {
 
-      require(aggdCols.size == 1)
+      require(aggdCols.size == 1) //FIXME
+      require(aggdByCols.size == 1) //FIXME
 
       val vtpe = classTag[V]
       val newDf = DF(sc, s"${name}/${aggdCols.mkString(";")}_aggby_${aggdByCols.mkString(";")}")
       newDf.addHeader(Array(aggdByCols.toArray, aggdCols.toArray).flatten)
       aggtor.colIndex = 0 //FIXME: allow multiple columns, use map like in filterColumnStrategy
 
-      val aggedColsZipped = zipColumns(aggdCols.map {
-        cols(_).index
-      })
+      val aggedColsZipped = ColumnZipper(this, aggdCols.map { cols(_).index })
 
-      val aggedRdd = keyBy(aggdByCols, aggedColsZipped)
+      val aggedRdd = keyBy(aggdByCols(0)/*FIXME*/, aggedColsZipped)
         .combineByKey(aggtor.convert, aggtor.mergeValue, aggtor.mergeCombiners)
 
       // columns of key
       aggdByCols.foreach { aggdByCol =>
         if (cols(aggdByCol).tpe =:= ru.typeOf[Double]) {
           val col1 = aggedRdd.map { case (k, v) =>
-            k(0).asInstanceOf[Double]
+            k.asInstanceOf[Double]
           }
           newDf.update(aggdByCol, Column(sc, col1, 0))
         } else if (cols(aggdByCol).tpe =:= ru.typeOf[String]) {
           val col1 = aggedRdd.map { case (k, v) =>
-            k(0).asInstanceOf[String]
+            k.asInstanceOf[String]
           }
           newDf.update(aggdByCol, Column(sc, col1, 0))
         } else {
@@ -403,7 +389,7 @@ case class DF private (val sc: SparkContext,
         val newDf = DF(sc, s"${name}_${aggByCols.mkString(";")}_agg_${aggedCols.mkString(";")}")
         newDf.addHeader(Array(aggByCols.toArray, aggedCols.toArray).flatten)
         aggtor.colIndex = cols(aggedCols(0)).index
-        val aggedRdd = keyBy(aggByCols).combineByKey(aggtor.convert, aggtor.mergeValue, aggtor.mergeCombiners)
+        val aggedRdd = keyBy(aggByCols, rowsRdd).combineByKey(aggtor.convert, aggtor.mergeValue, aggtor.mergeCombiners)
 
         if (cols(aggByCols(0)).tpe =:= ru.typeOf[Double]) {
           val col1 = aggedRdd.map { case(k,v) =>
