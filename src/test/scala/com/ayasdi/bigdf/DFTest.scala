@@ -6,15 +6,14 @@
 
 package com.ayasdi.bigdf
 
-import java.nio.file.{Paths, Files}
+import java.nio.file.{Files, Paths}
 
 import org.apache.log4j.{Level, Logger}
-import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.SparkContext._
+import org.apache.spark.{SparkConf, SparkContext}
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
 
 import scala.collection.TraversableOnce.MonadOps
-import scala.reflect.runtime.universe._
 
 class DFTest extends FunSuite with BeforeAndAfterAll {
     var sc: SparkContext = _
@@ -95,7 +94,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
     test("Column Index: Refer to a column of a DF") {
         val df = makeDF
         val col = df("a")
-        assert(col.tpe === typeOf[Double])
+      assert(col.isDouble)
         assert(col.index === 0)
         assert(col.rdd.count === 3)
     }
