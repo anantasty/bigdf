@@ -39,11 +39,11 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates due to fil
   /**
    * what is the column type?
    */
-  def isDouble: Boolean = ru.typeOf[T] =:= ru.typeOf[Double]
+  val isDouble: Boolean = ru.typeOf[T] =:= ru.typeOf[Double]
 
-  def isString: Boolean = ru.typeOf[T] =:= ru.typeOf[String]
+  val isString: Boolean = ru.typeOf[T] =:= ru.typeOf[String]
 
-  def getType: String = if (isDouble) "Double" else "String"
+  val getType: String = if (isDouble) "Double" else "String"
 
   /**
    * print brief description of this column
