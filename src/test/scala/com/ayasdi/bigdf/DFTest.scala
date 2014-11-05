@@ -320,12 +320,12 @@ class DFTestWithKryo extends DFTest {
     }
 }
 
-object AggSimple extends Aggregator[Double, Double] {
+case object AggSimple extends Aggregator[Double, Double, Double] {
     def aggregate(a: Double, b: Double) = a + b
 }
 
-object AggCustom extends Aggregator[Array[Double], Double] {
-    override def convert(a: Array[Any]): Array[Double] = { Array(a(colIndex).asInstanceOf[Double]) }
+case object AggCustom extends Aggregator[Double, Array[Double], Double] {
+    override def convert(a: Any): Array[Double] = { Array(a.asInstanceOf[Double]) }
     def aggregate(a: Array[Double], b: Array[Double]) = a ++ b
     override def finalize(x: Array[Double]) = x.sum
 }

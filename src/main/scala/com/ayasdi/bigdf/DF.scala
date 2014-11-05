@@ -315,6 +315,11 @@ case class DF private (val sc: SparkContext,
       cols(colName).rdd
     }.zip(valueRdd)
 
+    private def keyBy(colNames: Seq[String], valueCol: String) = {
+      val columns = colNames.map { cols(_).index }
+      ColumnZipper.zip(this, columns)
+    }.zip(cols(valueCol).rdd)
+
     /**
      * group by a column, uses a lot of memory. try to use aggregate(By) instead if possible
      */
@@ -332,20 +337,16 @@ case class DF private (val sc: SparkContext,
     /**
      * aggregate one column after grouping by another
      */
-    private def aggregateWithColumnStrategy[U: ClassTag, V: ClassTag]
-        (aggdByCols: Seq[String], aggdCols: Seq[String], aggtor: Aggregator[U, V]) = {
+    private def aggregateWithColumnStrategy[U: ClassTag, V: ClassTag, W: ClassTag]
+        (aggdByCols: Seq[String], aggdCol: String, aggtor: Aggregator[U, V, W]) = {
 
-      require(aggdCols.size == 1) //FIXME
       require(aggdByCols.size == 1) //FIXME
+      val wtpe = classTag[W]
 
-      val vtpe = classTag[V]
-      val newDf = DF(sc, s"${name}/${aggdCols.mkString(";")}_aggby_${aggdByCols.mkString(";")}")
-      newDf.addHeader(Array(aggdByCols.toArray, aggdCols.toArray).flatten)
-      aggtor.colIndex = 0 //FIXME: allow multiple columns, use map like in filterColumnStrategy
+      val newDf = DF(sc, s"${name}/${aggdCol}_aggby_${aggdByCols.mkString(";")}")
+      newDf.addHeader(Array(aggdByCols.toArray, Array(aggdCol)).flatten)
 
-      val aggedColsZipped = ColumnZipper(this, aggdCols.map { cols(_).index })
-
-      val aggedRdd = keyBy(aggdByCols(0)/*FIXME*/, aggedColsZipped)
+      val aggedRdd = keyBy(aggdByCols, aggdCol)
         .combineByKey(aggtor.convert, aggtor.mergeValue, aggtor.mergeCombiners)
 
       // columns of key
@@ -366,60 +367,21 @@ case class DF private (val sc: SparkContext,
       }
 
       // finalize the aggregations and add column of that
-      if (vtpe == classTag[Double]) {
+      if (wtpe == classTag[Double]) {
         val col1 = aggedRdd.map { case (k, v) =>
           aggtor.finalize(v)
         }.asInstanceOf[RDD[Double]]
-        newDf.update(aggdCols(0), Column(sc, col1, 1))
-      } else if (vtpe == classTag[String]) {
+        newDf.update(aggdCol, Column(sc, col1, 1))
+      } else if (wtpe == classTag[String]) {
         val col1 = aggedRdd.map { case (k, v) =>
           aggtor.finalize(v)
         }.asInstanceOf[RDD[String]]
-        newDf.update(aggdCols(0), Column(sc, col1, 1))
+        newDf.update(aggdCol, Column(sc, col1, 1))
       } else {
-        println("ERROR: aggregate value type" + vtpe)
+        println("ERROR: aggregate value type" + wtpe)
       }
 
       newDf
-    }
-
-    private def aggregateWithRowStrategy[U: ClassTag, V: ClassTag]
-        (aggByCols: Seq[String], aggedCols: Seq[String], aggtor: Aggregator[U, V]) = {
-        val vtpe = classTag[V]
-        val newDf = DF(sc, s"${name}_${aggByCols.mkString(";")}_agg_${aggedCols.mkString(";")}")
-        newDf.addHeader(Array(aggByCols.toArray, aggedCols.toArray).flatten)
-        aggtor.colIndex = cols(aggedCols(0)).index
-        val aggedRdd = keyBy(aggByCols, rowsRdd).combineByKey(aggtor.convert, aggtor.mergeValue, aggtor.mergeCombiners)
-
-        if (cols(aggByCols(0)).tpe =:= ru.typeOf[Double]) {
-          val col1 = aggedRdd.map { case(k,v) =>
-            k.asInstanceOf[Double]
-          }
-          newDf.update(aggByCols(0), Column(sc, col1, 0))
-        } else if (cols(aggByCols(0)).tpe =:= ru.typeOf[String]) {
-          val col1 = aggedRdd.map { case(k,v) =>
-            k.asInstanceOf[String]
-          }
-          newDf.update(aggByCols(0), Column(sc, col1, 1))
-        } else {
-          println("ERROR: aggregate key type" + cols(aggByCols(0)).tpe)
-        }
-
-        if (vtpe == classTag[Double]) {
-          val col1 = aggedRdd.map { case(k,v) =>
-            aggtor.finalize(v)
-          }.asInstanceOf[RDD[Double]]
-          newDf.update(aggedCols(0), Column(sc, col1, 0))
-        } else if (vtpe == classTag[String]) {
-          val col1 = aggedRdd.map { case(k,v) =>
-            aggtor.finalize(v)
-          }.asInstanceOf[RDD[String]]
-          newDf.update(aggedCols(0), Column(sc, col1, 1))
-        }  else {
-          println("ERROR: aggregate value type" + vtpe)
-        }
-
-        newDf
     }
 
   /**
@@ -431,10 +393,9 @@ case class DF private (val sc: SparkContext,
    * @tparam V
    * @return new DF with first column aggByCol and second aggedCol
    */
-    def aggregate [U: ClassTag, V: ClassTag]
-        (aggByCol: String, aggedCol: String, aggtor: Aggregator[U, V]) = {
-      if(aggWithRowStrategy) aggregateWithRowStrategy(List(aggByCol), List(aggedCol), aggtor)
-      else aggregateWithColumnStrategy(List(aggByCol), List(aggedCol), aggtor)
+    def aggregate [U: ClassTag, V: ClassTag, W: ClassTag]
+        (aggByCol: String, aggedCol: String, aggtor: Aggregator[U, V, W]) = {
+      aggregateWithColumnStrategy(List(aggByCol), aggedCol, aggtor)
     }
 
     /**
@@ -446,10 +407,9 @@ case class DF private (val sc: SparkContext,
      * @tparam V
      * @return new DF with first column aggByCol and second aggedCol
      */
-    def aggregate [U: ClassTag, V: ClassTag]
-        (aggByCol: Seq[String], aggedCol: Seq[String], aggtor: Aggregator[U, V]) = {
-      if(aggWithRowStrategy) aggregateWithRowStrategy(aggByCol, aggedCol, aggtor)
-      else aggregateWithColumnStrategy(aggByCol, aggedCol, aggtor)
+    def aggregate [U: ClassTag, V: ClassTag, W: ClassTag]
+        (aggByCols: Seq[String], aggedCol: Seq[String], aggtor: Aggregator[U, V, W]) = {
+        aggregateWithColumnStrategy(aggByCols, aggedCol.head, aggtor)
     }
 
     /**

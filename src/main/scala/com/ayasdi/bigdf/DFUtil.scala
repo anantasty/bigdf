@@ -42,32 +42,6 @@ private[bigdf] case class PivotHelper(grped: RDD[(Any, Iterable[Array[Any]])],
     }
 }
 
-/**
- * Extend this class to do aggregations. Implement aggregate method.
- * Optionally override convert and finalize
- * @tparam U
- * @tparam V
- */
-abstract case class Aggregator[U, V] {
-    var colIndex: Int = -1
-    def convert(a: Array[Any]): U = {
-        a(colIndex).asInstanceOf[U]
-    }
-    def mergeValue(a: U, b: Array[Any]): U = {
-        aggregate(a, convert(b))
-    }
-    def mergeCombiners(x: U, y: U): U = {
-        aggregate(x, y)
-    }
-
-    /*
-     * user supplied aggregator
-     */
-    def aggregate(p: U, q: U): U
-
-    def finalize(x: U): V = x.asInstanceOf[V]
-}
-
 private[bigdf] object ColumnZipper {
   /**
    * zip columns to get rows as arrays
