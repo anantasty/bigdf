@@ -17,3 +17,7 @@
 target/*
 
 .idea/*
+
+.idea_modules/*
+
+.settings

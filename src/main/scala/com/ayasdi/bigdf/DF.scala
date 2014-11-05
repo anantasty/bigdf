@@ -15,8 +15,8 @@ import org.apache.spark.storage.StorageLevel.MEMORY_ONLY_SER
 
 import scala.collection.JavaConversions
 import scala.collection.mutable.HashMap
-import scala.reflect.{ClassTag, classTag}
 import scala.reflect.runtime.{universe => ru}
+import scala.reflect.{ClassTag, classTag}
 import scala.util.{Random, Try}
 
 /**
@@ -351,18 +351,18 @@ case class DF private (val sc: SparkContext,
 
       // columns of key
       aggdByCols.foreach { aggdByCol =>
-        if (cols(aggdByCol).tpe =:= ru.typeOf[Double]) {
+        if (cols(aggdByCol).isDouble) {
           val col1 = aggedRdd.map { case (k, v) =>
             k.asInstanceOf[Double]
           }
           newDf.update(aggdByCol, Column(sc, col1, 0))
-        } else if (cols(aggdByCol).tpe =:= ru.typeOf[String]) {
+        } else if (cols(aggdByCol).isString) {
           val col1 = aggedRdd.map { case (k, v) =>
             k.asInstanceOf[String]
           }
           newDf.update(aggdByCol, Column(sc, col1, 0))
         } else {
-          println("ERROR: aggregate key type" + cols(aggdByCol).tpe)
+          println("ERROR: aggregate key type" + cols(aggdByCol).getType)
         }
       }
 
@@ -400,7 +400,7 @@ case class DF private (val sc: SparkContext,
 
     /**
      * aggregate multiple columns after grouping by multiple other columns
-     * @param aggByCol sequence of columns to group by
+     * @param aggByCols sequence of columns to group by
      * @param aggedCol sequence of columns to be aggregated
      * @param aggtor implementation of Aggregator
      * @tparam U
@@ -434,9 +434,9 @@ case class DF private (val sc: SparkContext,
     def pivot(keyCol: String, pivotByCol: String,
               pivotedCols: List[Int] = cols.values.map { _.index }.toList): DF = {
         val grped = groupBy(keyCol)
-        val pivotValues = if (column(pivotByCol).tpe =:= ru.typeOf[String])
+      val pivotValues = if (column(pivotByCol).isString)
             column(pivotByCol).distinct.collect.asInstanceOf[Array[String]]
-        else if (column(pivotByCol).tpe =:= ru.typeOf[Double])
+      else if (column(pivotByCol).isDouble)
             column(pivotByCol).distinct.collect.asInstanceOf[Array[Double]].map { _.toString }
         else
             null
@@ -448,14 +448,15 @@ case class DF private (val sc: SparkContext,
             val grpSplit = new PivotHelper(grped, pivotIndex, pivotValue).get
             cleanedPivotedCols.foreach { pivotedColIndex =>
 
-                if (cols(colIndexToName(pivotedColIndex)).tpe =:= ru.typeOf[Double]) {
+              if (cols(colIndexToName(pivotedColIndex)).isDouble) {
                     val newColRdd = grpSplit.map {
                         case (k, v) =>
                             if (v.isEmpty) Double.NaN else v.head(pivotedColIndex)
                     }
                     newDf.update(s"D_${colIndexToName(pivotedColIndex)}@$pivotByCol==$pivotValue",
                         Column(sc, newColRdd.asInstanceOf[RDD[Double]]))
-                } else if (cols(colIndexToName(pivotedColIndex)).tpe =:= ru.typeOf[String]) {
+                } else if (cols(colIndexToName(pivotedColIndex)).isString) {
+
                     val newColRdd = grpSplit.map {
                         case (k, v) =>
                             if (v.isEmpty) "" else v.head(pivotedColIndex)
@@ -698,10 +699,12 @@ object DF {
         }
         val colName = df.colIndexToName(i)
         val col = cols(colName)
-        if(col.tpe =:= ru.typeOf[Double])
+
+        if(col.isDouble)
           cols(colName) = Column(df.sc, applyFilter(col.number), i)
-        else if(col.tpe =:= ru.typeOf[String])
+        else if(col.isString)
           cols(colName) = Column(df.sc, applyFilter(col.string), i)
+
         else
           println("Unexpected column type while column strategy filtering")
       }

@@ -14,7 +14,12 @@ http://www.slideshare.net/codeninja4086/df-38948475?utm_source=slideshow03&utm_m
 
 How to get it?
 ==============
+- Install maven 
 - Get Spark from https://github.com/AyasdiOpenSource/spark [A minor patch is needed on Spark to make bigdf more efficient. A pull request has been submitted and when it is merged you can use regular Spark distribution] 
+- Build Spark 
+-- cd spark
+-- export MAVEN_OPTS="-Xmx2g -XX:MaxPermSize=512M -XX:ReservedCodeCacheSize=512m"
+-- mvn -Dhadoop.version=2.0.0-mr1-cdh4.2.0 -DskipTests clean package
 - clone the bigdf repo
 - copy spark assembly jar(after bulding it) to bigdf/lib
 - sbt update
@@ -23,5 +28,3 @@ How to get it?
 - /path/to/spark/bin/spark-shell --jars /path/to/bigdf/target/scala-2.10/bigdf_2.10-0.1.jar 
 - https://github.com/AyasdiOpenSource/bigdf/wiki/ for examples
 - Look at DFTest.scala for usage [a simple example is shown below]
-
-
