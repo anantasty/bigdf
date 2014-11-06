@@ -27,7 +27,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
       }
     }
 
-  override def beforeAll {
+    override def beforeAll {
         SparkUtil.silenceSpark
         System.clearProperty("spark.master.port")
         sc = new SparkContext("local[4]", "abcd")
@@ -157,7 +157,11 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
 
     test("Parsing: Parse doubles") {
         val df = makeDFFromCSVFile("src/test/resources/mixedDoubles.csv")
-        assert(df("Feature1").parseErrors === 1)
+        df.cols.foreach { col =>
+          if(col._2.isDouble) col._2.number.collect
+          else null
+        }
+        assert(df("Feature1").parseErrors.value === 1)
     }
 
     test("Filter/Select: Double Column comparisons with Scalar") {
@@ -270,12 +274,16 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         val df = makeDF
         df("groupByThis") = df("a").map { x => 1.0 }
         val sumOfA = df.aggregate("groupByThis", "a", AggSimple)
-//        assert(sumOfA.first._2 === df("a").number.sum)
         assert(sumOfA("a").number.first === df("a").number.sum)
         val arrOfA = df.aggregate("groupByThis", "a", AggCustom)
-//        assert(arrOfA.first._2 === Array(11.0, 12.0, 13.0))
         assert(arrOfA("a").number.first === df("a").number.sum)
+    }
 
+    test ("Aggregate multi") {
+      val df = makeDFFromCSVFile("src/test/resources/aggregate.csv")
+      val sumOfFeature1 = df.aggregate(List("Month", "Customer"), List("Feature1"), AggSimple)
+      assert(sumOfFeature1.numCols === 3)
+      assert(sumOfFeature1.numRows === 4)
     }
 
     test("Pivot") {
@@ -314,12 +322,12 @@ class DFTestWithKryo extends DFTest {
     }
 }
 
-object AggSimple extends Aggregator[Double, Double] {
+case object AggSimple extends Aggregator[Double, Double, Double] {
     def aggregate(a: Double, b: Double) = a + b
 }
 
-object AggCustom extends Aggregator[Array[Double], Double] {
-    override def convert(a: Array[Any]): Array[Double] = { Array(a(colIndex).asInstanceOf[Double]) }
+case object AggCustom extends Aggregator[Double, Array[Double], Double] {
+    override def convert(a: Any): Array[Double] = { Array(a.asInstanceOf[Double]) }
     def aggregate(a: Array[Double], b: Array[Double]) = a ++ b
     override def finalize(x: Array[Double]) = x.sum
 }

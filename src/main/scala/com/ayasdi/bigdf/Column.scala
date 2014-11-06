@@ -19,13 +19,13 @@ object Preamble {
     implicit def toRdd[T](col: Column[T]) = { col.rdd }
 }
 
-case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates due to fillNA, markNA */
-                                          var index: Int, /* mutates when an orphan column is put in a DF */
-                                          parseErrors: Long) {
+class Column[T: ru.TypeTag] private (val sc: SparkContext,
+                                     var rdd: RDD[T], /* mutates due to fillNA, markNA */
+                                     var index: Int) /* mutates when an orphan column is put in a DF */ {
 
-    override def toString() = {
-        val c = if (rdd != null) count else 0
-      s"\ttype:${getType}\n\tcount:${c}\n\tparseErrors:${parseErrors}"
+    val parseErrors = sc.accumulator(0L)
+    override def toString = {
+       s"rdd: ${rdd.name} index: $index type: $getType"
     }
 
     /**
@@ -47,10 +47,11 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates due to fil
 
   /**
    * print brief description of this column
-     */
-    def describe() {
-        println(toString)
-    if (isDouble) {
+   */
+    def describe(): Unit = {
+        val c = if (rdd != null) count else 0
+        println(s"\ttype:${getType}\n\tcount:${c}\n\tparseErrors:${parseErrors}")
+      if (isDouble) {
             println(s"\tmax:${stats.max}\n\tmin:${stats.min}\n\tcount:${stats.count}\n\tsum:${stats.sum}\n")
             println(s"\tmean:${stats.mean}\n\tvariance(sample):${stats.sampleVariance}\n\tstddev(sample):${stats.sampleStdev}\n")
             println(s"\tvariance:${stats.variance}\n\tstddev:${stats.stdev}")
@@ -185,28 +186,28 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates due to fil
         def withColumnOfDoubles(a: Column[Double], b: Column[Double], oper: (Double, Double) => Double) = {
             val zipped = a.rdd.zip(b.rdd)
             val result = zipped.map { x => oper(x._1, x._2) }
-            Column(result)
+            Column(sc, result)
         }
 
         def filterDouble(a: Column[Double], b: Double, oper: (Double, Double) => Boolean) = {
             val result = a.rdd.filter { x => oper(x, b) }
-            Column(result)
+            Column(sc, result)
         }
 
         def withColumnOfString(a: Column[Double], b: Column[String], oper: (Double, String) => String) = {
             val zipped = a.rdd.zip(b.rdd)
             val result = zipped.map { x => oper(x._1, x._2) }
-            Column(result)
+            Column(sc, result)
         }
 
         def withScalarDouble(a: Column[Double], b: Double, oper: (Double, Double) => Double) = {
             val result = a.rdd.map { x => oper(x, b) }
-            Column(result)
+            Column(sc, result)
         }
 
         def withScalarString(a: Column[Double], b: String, oper: (Double, String) => String) = {
             val result = a.rdd.map { x => oper(x, b) }
-            Column(result)
+            Column(sc, result)
         }
     }
 
@@ -214,28 +215,28 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates due to fil
         def withColumnOfDoubles(a: Column[String], b: Column[Double], oper: (String, Double) => String) = {
             val zipped = a.rdd.zip(b.rdd)
             val result = zipped.map { x => oper(x._1, x._2) }
-            Column(result)
+            Column(sc, result)
         }
 
         def filterDouble(a: Column[String], b: Double, oper: (String, Double) => Boolean) = {
             val result = a.rdd.filter { x => oper(x, b) }
-            Column(result)
+            Column(sc, result)
         }
 
         def withColumnOfString(a: Column[String], b: Column[String], oper: (String, String) => String) = {
             val zipped = a.rdd.zip(b.rdd)
             val result = zipped.map { x => oper(x._1, x._2) }
-            Column(result)
+            Column(sc, result)
         }
 
         def withScalarDouble(a: Column[String], b: Double, oper: (String, Double) => String) = {
             val result = a.rdd.map { x => oper(x, b) }
-            Column(result)
+            Column(sc, result)
         }
 
         def withScalarString(a: Column[String], b: String, oper: (String, String) => String) = {
             val result = a.rdd.map { x => oper(x, b) }
-            Column(result)
+            Column(sc, result)
         }
     }
 
@@ -478,9 +479,9 @@ case class Column[T: ru.TypeTag] private (var rdd: RDD[T], /* mutates due to fil
     def map[U: ClassTag](mapper: T => U): Column[Any] = {
         val mapped = rdd.map { row => mapper(row) }
         if (classTag[U] == classTag[Double])
-            Column(mapped.asInstanceOf[RDD[Double]]).asInstanceOf[Column[Any]]
+            Column(sc, mapped.asInstanceOf[RDD[Double]]).asInstanceOf[Column[Any]]
         else
-            Column(mapped.asInstanceOf[RDD[String]]).asInstanceOf[Column[Any]]
+            Column(sc, mapped.asInstanceOf[RDD[String]]).asInstanceOf[Column[Any]]
     }
 
 }
@@ -556,42 +557,40 @@ case object StringOps {
 }
 
 object Column {
-    def asDoubles(sc: SparkContext, stringRdd: RDD[String], index: Int, cacheLevel: StorageLevel) = {
-        val parseErrors = sc.accumulator(0L)
-        val doubleRdd = stringRdd map { x =>
-            var y = Double.NaN
-            try {
-                y = x.toDouble
-            } catch {
-                case _: java.lang.NumberFormatException => parseErrors += 1
-            }
-            y
-        }
-        doubleRdd.setName(s"${stringRdd.name}/double").persist(cacheLevel)
-        doubleRdd.foreach { x: Double => {} } //to trigger accumulation of parseErrors
-        new Column[Double](doubleRdd, index, parseErrors.value)
-    }
+    def asDoubles(sCtx: SparkContext, stringRdd: RDD[String], index: Int, cacheLevel: StorageLevel): Column[Double] = {
+      val col = new Column[Double](sCtx, null, index)
+      val parseErrors = col.parseErrors
 
-    def asDoubles(sc: SparkContext, col: Column[String], index: Int, cacheLevel: StorageLevel): Column[Double] = {
-    	asDoubles(sc, col.rdd, index, cacheLevel)
+      val doubleRdd = stringRdd.map { x =>
+        var y = Double.NaN
+        try {
+          y = x.toDouble
+        } catch {
+          case _: java.lang.NumberFormatException => parseErrors += 1
+        }
+        y
+      }
+      doubleRdd.setName(s"${stringRdd.name}/double").persist(cacheLevel)
+      col.rdd = doubleRdd
+//      doubleRdd.foreach { x: Double => {} } //to trigger accumulation of parseErrors
+      col
     }
 
     /**
      * create Column from existing RDD
      */
-    def apply[T: ru.TypeTag](rdd: RDD[T], index: Int = -1) = {
+    def apply[T: ru.TypeTag](sCtx: SparkContext, rdd: RDD[T], index: Int = -1) = {
         val tpe = ru.typeOf[T]
-        println(tpe)
         if (tpe =:= ru.typeOf[Double])
-            newDoubleColumn(rdd.asInstanceOf[RDD[Double]], index)
+            newDoubleColumn(sCtx, rdd.asInstanceOf[RDD[Double]], index)
         else if (tpe =:= ru.typeOf[String])
-            newStringColumn(rdd.asInstanceOf[RDD[String]], index)
+            newStringColumn(sCtx, rdd.asInstanceOf[RDD[String]], index)
         else null
     }
-    def newDoubleColumn(rdd: RDD[Double], index: Int) = {
-        new Column(rdd, index, 0)
+    private def newDoubleColumn(sCtx: SparkContext, rdd: RDD[Double], index: Int) = {
+        new Column(sCtx, rdd, index)
     }
-    def newStringColumn(rdd: RDD[String], index: Int) = {
-        new Column(rdd, index, 0)
+    private def newStringColumn(sCtx: SparkContext, rdd: RDD[String], index: Int) = {
+        new Column(sCtx, rdd, index)
     }
 }
