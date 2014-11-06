@@ -77,7 +77,7 @@ private[bigdf] object ColumnZipper {
    */
   def zip(df: DF, indices: Seq[Int]) = {
     val arrays = apply(df, indices)
-    arrays.map{ _.toList }
+    arrays.map { _.toList }
   }
 
 }

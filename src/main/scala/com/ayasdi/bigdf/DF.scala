@@ -340,7 +340,6 @@ case class DF private (val sc: SparkContext,
     private def aggregateWithColumnStrategy[U: ClassTag, V: ClassTag, W: ClassTag]
         (aggdByCols: Seq[String], aggdCol: String, aggtor: Aggregator[U, V, W]) = {
 
-      require(aggdByCols.size == 1) //FIXME
       val wtpe = classTag[W]
 
       val newDf = DF(sc, s"${name}/${aggdCol}_aggby_${aggdByCols.mkString(";")}")
@@ -350,20 +349,23 @@ case class DF private (val sc: SparkContext,
         .combineByKey(aggtor.convert, aggtor.mergeValue, aggtor.mergeCombiners)
 
       // columns of key
+      var i = 0
       aggdByCols.foreach { aggdByCol =>
+        val j = i
         if (cols(aggdByCol).isDouble) {
           val col1 = aggedRdd.map { case (k, v) =>
-            k.asInstanceOf[Double]
+            k(j).asInstanceOf[Double]
           }
           newDf.update(aggdByCol, Column(sc, col1, 0))
         } else if (cols(aggdByCol).isString) {
           val col1 = aggedRdd.map { case (k, v) =>
-            k.asInstanceOf[String]
+            k(j).asInstanceOf[String]
           }
           newDf.update(aggdByCol, Column(sc, col1, 0))
         } else {
           println("ERROR: aggregate key type" + cols(aggdByCol).getType)
         }
+        i += 1
       }
 
       // finalize the aggregations and add column of that
