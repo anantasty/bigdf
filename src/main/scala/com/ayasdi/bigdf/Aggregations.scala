@@ -7,7 +7,6 @@
 package com.ayasdi.bigdf
 
 import scala.reflect.runtime.{universe => ru}
-import scala.collection.mutable.HashMap
 
 /**
  * Extend this class to do aggregations. Implement aggregate method.
@@ -41,7 +40,7 @@ trait Aggregator[U, V, W] {
    */
   def aggregate(p: V, q: V): V
 
-  def finalize(x:V): W = x.asInstanceOf[W]
+  def finalize(x: V): W = x.asInstanceOf[W]
 }
 
 case object AggMean extends Aggregator[Double, Tuple2[Double, Long], Double] {
@@ -50,15 +49,15 @@ case object AggMean extends Aggregator[Double, Tuple2[Double, Long], Double] {
   /*
       for each column, set sum to cell's value and count to 1
    */
-  override def convert(a: Any) =  (a.asInstanceOf[Double], 1L)
+  override def convert(a: Any) = (a.asInstanceOf[Double], 1L)
 
   /*
       add running sums and counts
    */
-  def aggregate(a: SumNCount, b: SumNCount) =  (a._1 + b._1, a._2 + b._2)
+  def aggregate(a: SumNCount, b: SumNCount) = (a._1 + b._1, a._2 + b._2)
 
   /*
       divide sum by count to get mean
    */
-  override def finalize(x: SumNCount) =  x._1 / x._2
+  override def finalize(x: SumNCount) = x._1 / x._2
 }

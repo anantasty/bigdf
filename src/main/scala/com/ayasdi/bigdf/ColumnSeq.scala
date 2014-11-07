@@ -32,8 +32,10 @@ case class ColumnSeq(val cols: Seq[(String, Column[Any])]) {
    */
   def map[U: ClassTag](mapper: Array[Any] => U): Column[Any] = {
     val tpe = classTag[U]
-    val zippedCols = ColumnZipper(cols.map { _._2 })
-    val mapped = zippedCols.map { row => mapper(row) }
+    val zippedCols = ColumnZipper(cols.map {
+      _._2
+    })
+    val mapped = zippedCols.map { row => mapper(row)}
     if (tpe == classTag[Double])
       Column(sc, mapped.asInstanceOf[RDD[Double]]).asInstanceOf[Column[Any]]
     else if (tpe == classTag[String])
