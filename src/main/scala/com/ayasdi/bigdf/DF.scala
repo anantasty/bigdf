@@ -248,7 +248,7 @@ case class DF private (val sc: SparkContext,
             println(s"Replaced Column: ${colName}")
             that.index = col.index
         } else {
-            println(s"New Column: ${colName} ")
+            println(s"New Column: ${colName}")
             val colIndex = colIndexToName.size
             colIndexToName.put(colIndex, colName)
             that.index = colIndex
@@ -343,7 +343,6 @@ case class DF private (val sc: SparkContext,
       val wtpe = classTag[W]
 
       val newDf = DF(sc, s"${name}/${aggdCol}_aggby_${aggdByCols.mkString(";")}")
-      newDf.addHeader(Array(aggdByCols.toArray, Array(aggdCol)).flatten)
 
       val aggedRdd = keyBy(aggdByCols, aggdCol)
         .combineByKey(aggtor.convert, aggtor.mergeValue, aggtor.mergeCombiners)
@@ -356,12 +355,12 @@ case class DF private (val sc: SparkContext,
           val col1 = aggedRdd.map { case (k, v) =>
             k(j).asInstanceOf[Double]
           }
-          newDf.update(aggdByCol, Column(sc, col1, 0))
+          newDf.update(aggdByCol, Column(sc, col1, newDf.numCols))
         } else if (cols(aggdByCol).isString) {
           val col1 = aggedRdd.map { case (k, v) =>
             k(j).asInstanceOf[String]
           }
-          newDf.update(aggdByCol, Column(sc, col1, 0))
+          newDf.update(aggdByCol, Column(sc, col1, newDf.numCols))
         } else {
           println("ERROR: aggregate key type" + cols(aggdByCol).getType)
         }
@@ -378,7 +377,7 @@ case class DF private (val sc: SparkContext,
         val col1 = aggedRdd.map { case (k, v) =>
           aggtor.finalize(v)
         }.asInstanceOf[RDD[String]]
-        newDf.update(aggdCol, Column(sc, col1, 1))
+        newDf.update(aggdCol, Column(sc, col1, newDf.numCols))
       } else {
         println("ERROR: aggregate value type" + wtpe)
       }

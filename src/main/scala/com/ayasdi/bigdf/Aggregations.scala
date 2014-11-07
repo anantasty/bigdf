@@ -44,7 +44,7 @@ trait Aggregator[U, V, W] {
   def finalize(x:V): W = x.asInstanceOf[W]
 }
 
-object AggMean extends Aggregator[Double, Tuple2[Double, Long], Double] {
+case object AggMean extends Aggregator[Double, Tuple2[Double, Long], Double] {
   type SumNCount = Tuple2[Double, Long]
 
   /*
