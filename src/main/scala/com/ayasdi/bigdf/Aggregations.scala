@@ -61,3 +61,9 @@ case object AggMean extends Aggregator[Double, Tuple2[Double, Long], Double] {
    */
   override def finalize(x: SumNCount) = x._1 / x._2
 }
+
+case class AggText(val sep: String = ",") extends Aggregator[String, Array[String], String] {
+  override def convert(a: Any) = Array(a.asInstanceOf[String])
+  def aggregate(a: Array[String], b: Array[String]) = a ++ b
+  override def finalize(a: Array[String]) = a.mkString(sep)
+}
