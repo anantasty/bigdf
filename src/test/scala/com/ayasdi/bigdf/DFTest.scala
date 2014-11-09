@@ -289,7 +289,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
     test ("Aggregate string") {
       val df = makeDFWithString
       df("groupByThis") = df("a").str_map( x => "hey")
-      val arrOfA = df.aggregate("groupByThis", "a", new AggText(sep=";"))
+      val arrOfA = df.aggregate("groupByThis", "a", new AggMakeString(sep=";"))
       val strOfA = arrOfA("a").string.first
       assert(strOfA.contains("11.0") && strOfA.contains("12.0") && strOfA.contains("13.0"))
     }
@@ -335,7 +335,7 @@ case object AggSimple extends Aggregator[Double, Double, Double] {
 }
 
 case object AggCustom extends Aggregator[Double, Array[Double], Double] {
-    override def convert(a: Any): Array[Double] = { Array(a.asInstanceOf[Double]) }
+    override def convert(a: Double): Array[Double] = { Array(a.asInstanceOf[Double]) }
     def aggregate(a: Array[Double], b: Array[Double]) = a ++ b
     override def finalize(x: Array[Double]) = x.sum
 }

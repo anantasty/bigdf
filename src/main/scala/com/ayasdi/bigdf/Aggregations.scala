@@ -7,6 +7,7 @@
 package com.ayasdi.bigdf
 
 import scala.reflect.runtime.{universe => ru}
+import scala.collection.immutable.HashMap
 
 /**
  * Extend this class to do aggregations. Implement aggregate method.
@@ -23,11 +24,11 @@ trait Aggregator[U, V, W] {
    * @param cell value in a cell
    * @return converted cell
    */
-  def convert(cell: Any): V = {
+  def convert(cell: U): V = {
     cell.asInstanceOf[V]
   }
 
-  def mergeValue(a: V, b: Any): V = {
+  def mergeValue(a: V, b: U): V = {
     aggregate(a, convert(b))
   }
 
@@ -49,7 +50,7 @@ case object AggMean extends Aggregator[Double, Tuple2[Double, Long], Double] {
   /*
       for each column, set sum to cell's value and count to 1
    */
-  override def convert(a: Any) = (a.asInstanceOf[Double], 1L)
+  override def convert(a: Double) = (a.asInstanceOf[Double], 1L)
 
   /*
       add running sums and counts
@@ -62,8 +63,21 @@ case object AggMean extends Aggregator[Double, Tuple2[Double, Long], Double] {
   override def finalize(x: SumNCount) = x._1 / x._2
 }
 
-case class AggText(val sep: String = ",") extends Aggregator[String, Array[String], String] {
-  override def convert(a: Any) = Array(a.asInstanceOf[String])
+class AggString[W] extends Aggregator[String, Array[String], W] {
+  override def convert(a: String) = Array(a.asInstanceOf[String])
   def aggregate(a: Array[String], b: Array[String]) = a ++ b
+}
+
+case class AggMakeString(val sep: String = ",") extends AggString[String] {
   override def finalize(a: Array[String]) = a.mkString(sep)
 }
+
+//case object TF extends AggText[HashMap[String, Double]] {
+//  override def finalize(a: Array[String]) = {
+//    val wc = a.map{(_, 1)}
+//    wc.reduce{ (l,r) =>
+//      if(l._1 == r. _1) (l._1, l._2 + r._2)
+//      else  ()
+//    }
+//  }
+//}

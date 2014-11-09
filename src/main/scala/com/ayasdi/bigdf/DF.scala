@@ -320,10 +320,11 @@ case class DF private(val sc: SparkContext,
   (aggdByCols: Seq[String], aggdCol: String, aggtor: Aggregator[U, V, W]) = {
 
     val wtpe = classTag[W]
+    require(cols(aggdCol).compareType(classTag[U]))
 
     val newDf = DF(sc, s"${name}/${aggdCol}_aggby_${aggdByCols.mkString(";")}")
 
-    val aggedRdd = keyBy(aggdByCols, aggdCol)
+    val aggedRdd = keyBy(aggdByCols, aggdCol).asInstanceOf[RDD[(List[Any], U)]]
       .combineByKey(aggtor.convert, aggtor.mergeValue, aggtor.mergeCombiners)
 
     // columns of key

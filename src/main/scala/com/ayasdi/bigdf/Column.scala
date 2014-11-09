@@ -39,6 +39,11 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   val isDouble: Boolean = ru.typeOf[T] =:= ru.typeOf[Double]
   val isString: Boolean = ru.typeOf[T] =:= ru.typeOf[String]
   val getType: String = if (isDouble) "Double" else "String"
+  def compareType[C: ClassTag] = {
+    if(isDouble) classTag[C] == classTag[Double]
+    else if(isString) classTag[C] == classTag[String]
+    else false
+  }
   /**
    * statistical information about this column
    */
