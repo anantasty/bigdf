@@ -732,9 +732,9 @@ object DF {
       val col = cols(colName)
 
       if (col.isDouble)
-        cols(colName) = Column(df.sc, applyFilter(col.number), i)
+        cols(colName) = Column(df.sc, applyFilter(col.doubleRdd), i)
       else if (col.isString)
-        cols(colName) = Column(df.sc, applyFilter(col.string), i)
+        cols(colName) = Column(df.sc, applyFilter(col.stringRdd), i)
       else
         println("Unexpected column type while column strategy filtering")
     }

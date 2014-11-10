@@ -1,0 +1,91 @@
+/* Ayasdi Inc. Copyright 2014 - all rights reserved. */
+/**
+ * @author mohit
+ *         dataframe on spark
+ */
+package com.ayasdi.bigdf
+
+import org.apache.spark.SparkContext
+
+import scala.reflect.runtime.{universe => ru}
+
+private case object ColumnOfStringsOps {
+  def withColumnOfDoubles(sc: SparkContext, a: Column[String], b: Column[Double], oper: (String, Double) => String) = {
+    val zipped = a.stringRdd.zip(b.doubleRdd)
+    val result = zipped.map { x => oper(x._1, x._2)}
+    Column(sc, result)
+  }
+
+  def filterDouble(sc: SparkContext, a: Column[String], b: Double, oper: (String, Double) => Boolean) = {
+    val result = a.stringRdd.filter { x => oper(x, b)}
+    Column(sc, result)
+  }
+
+  def withColumnOfString(sc: SparkContext, a: Column[String], b: Column[String], oper: (String, String) => String) = {
+    val zipped = a.stringRdd.zip(b.stringRdd)
+    val result = zipped.map { x => oper(x._1, x._2)}
+    Column(sc, result)
+  }
+
+  def withScalarDouble(sc: SparkContext, a: Column[String], b: Double, oper: (String, Double) => String) = {
+    val result = a.stringRdd.map { x => oper(x, b)}
+    Column(sc, result)
+  }
+
+  def withScalarString(sc: SparkContext, a: Column[String], b: String, oper: (String, String) => String) = {
+    val result = a.stringRdd.map { x => oper(x, b)}
+    Column(sc, result)
+  }
+}
+
+
+/*
+ * operations with a string as first param
+ */
+case object StringOps {
+  def addDouble(a: String, b: Double) = a + b
+
+  def multiply(a: String, b: Double) = a * b.toInt
+
+  def addString(a: String, b: String) = a + b
+
+  def gt(a: String, b: String) = colBool(a > b)
+
+  def gte(a: String, b: String) = colBool(a >= b)
+
+  private def colBool(bool: Boolean) = {
+    if (bool) "t" else "f"
+  }
+
+  def lt(a: String, b: String) = colBool(a < b)
+
+  def lte(a: String, b: String) = colBool(a <= b)
+
+  def eq(a: String, b: String) = colBool(a == b)
+
+  def neq(a: String, b: String) = colBool(a != b)
+
+  def gtFilter(b: String)(a: String) = a > b
+
+  def gteFilter(b: String)(a: String) = a >= b
+
+  def ltFilter(b: String)(a: String) = a < b
+
+  def lteFilter(b: String)(a: String) = a <= b
+
+  def eqFilter(b: String)(a: String) = a == b
+
+  def neqFilter(b: String)(a: String) = a != b
+
+  def gtColumn(a: String, b: String) = a > b
+
+  def gteColumn(a: String, b: String) = a >= b
+
+  def ltColumn(a: String, b: String) = a < b
+
+  def lteColumn(a: String, b: String) = a <= b
+
+  def eqColumn(a: String, b: String) = a == b
+
+  def neqColumn(a: String, b: String) = a != b
+}

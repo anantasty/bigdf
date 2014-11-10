@@ -39,10 +39,21 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   val isDouble: Boolean = ru.typeOf[T] =:= ru.typeOf[Double]
   val isString: Boolean = ru.typeOf[T] =:= ru.typeOf[String]
   val getType: String = if (isDouble) "Double" else "String"
+
   def compareType[C: ClassTag] = {
-    if(isDouble) classTag[C] == classTag[Double]
-    else if(isString) classTag[C] == classTag[String]
+    if (isDouble) classTag[C] == classTag[Double]
+    else if (isString) classTag[C] == classTag[String]
     else false
+  }
+
+  def castDouble = {
+    require(isDouble)
+    this.asInstanceOf[Column[Double]]
+  }
+
+  def castString = {
+    require(isString)
+    this.asInstanceOf[Column[String]]
   }
   /**
    * statistical information about this column
@@ -70,26 +81,26 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   else new DoubleRDDFunctions(rdd.asInstanceOf[RDD[Double]]).stats
 
   /**
-   * print upto 10 elements
+   * print upto max(default 10) elements
    */
-  def list {
+  def list(max: Int = 10): Unit = {
     println("Count: $count")
     if (isDouble) {
-      if (count <= 10)
-        number.collect.foreach {
+      if (count <= max)
+        doubleRdd.collect.foreach {
           println _
         }
       else
-        number.take(10).foreach {
+        doubleRdd.take(max).foreach {
           println _
         }
     } else if (isString) {
-      if (count <= 10)
-        string.collect.foreach {
+      if (count <= max)
+        stringRdd.collect.foreach {
           println _
         }
       else
-        string.take(10).foreach {
+        stringRdd.take(max).foreach {
           println _
         }
     } else {
@@ -100,7 +111,7 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   /**
    * get rdd of strings to do string functions
    */
-  def string = {
+  def stringRdd = {
     if (isString) {
       rdd.asInstanceOf[RDD[String]]
     } else {
@@ -143,7 +154,7 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   def markNA(naVal: Double): Unit = {
     cachedStats = null
     if (isDouble) {
-      rdd = number.map { cell => if (cell == naVal) Double.NaN else cell}
+      rdd = doubleRdd.map { cell => if (cell == naVal) Double.NaN else cell}
     } else {
       println("This is not a Double column")
     }
@@ -152,7 +163,7 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   /**
    * get rdd of doubles to use doublerddfunctions
    */
-  def number = {
+  def doubleRdd = {
     if (isDouble) {
       rdd.asInstanceOf[RDD[Double]]
     } else {
@@ -166,7 +177,7 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   def markNA(naVal: String) {
     cachedStats = null
     if (isString) {
-      rdd = string.map { cell => if (cell == naVal) "" else cell}
+      rdd = stringRdd.map { cell => if (cell == naVal) "" else cell}
     } else {
       println("This is not a String column")
     }
@@ -178,7 +189,7 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   def fillNA(value: Double) {
     cachedStats = null
     if (isDouble) {
-      rdd = number.map { cell => if (cell.isNaN) value else cell }
+      rdd = doubleRdd.map { cell => if (cell.isNaN) value else cell}
     } else {
       println("This is not a Double column")
     }
@@ -190,7 +201,7 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   def fillNA(value: String) {
     cachedStats = null
     if (isString) {
-      rdd = string.map { cell => if (cell.isEmpty) value else cell }
+      rdd = stringRdd.map { cell => if (cell.isEmpty) value else cell}
     } else {
       println("This is not a String column")
     }
@@ -201,11 +212,11 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
    */
   def +(that: Column[_]) = {
     if (isDouble && that.isDouble)
-      ColumnOfDoublesOps.withColumnOfDoubles(this.asInstanceOf[Column[Double]], that.asInstanceOf[Column[Double]], DoubleOps.addDouble)
-        .asInstanceOf[Column[Any]]
+      ColumnOfDoublesOps.withColumnOfDoubles(sc, this.castDouble,
+        that.castDouble, DoubleOps.addDouble)
     else if (isString && that.isDouble)
-      ColumnOfStringsOps.withColumnOfDoubles(this.asInstanceOf[Column[String]], that.asInstanceOf[Column[Double]], StringOps.addDouble)
-        .asInstanceOf[Column[Any]]
+      ColumnOfStringsOps.withColumnOfDoubles(sc, this.castString,
+        that.castDouble, StringOps.addDouble)
     else null
   }
 
@@ -214,7 +225,8 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
    */
   def -(that: Column[_]) = {
     if (isDouble && that.isDouble)
-      ColumnOfDoublesOps.withColumnOfDoubles(this.asInstanceOf[Column[Double]], that.asInstanceOf[Column[Double]], DoubleOps.subtract)
+      ColumnOfDoublesOps.withColumnOfDoubles(sc, this.castDouble,
+        that.castDouble, DoubleOps.subtract)
         .asInstanceOf[Column[Any]]
     else null
   }
@@ -224,7 +236,8 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
    */
   def /(that: Column[_]) = {
     if (isDouble && that.isDouble)
-      ColumnOfDoublesOps.withColumnOfDoubles(this.asInstanceOf[Column[Double]], that.asInstanceOf[Column[Double]], DoubleOps.divide)
+      ColumnOfDoublesOps.withColumnOfDoubles(sc, this.castDouble,
+        that.castDouble, DoubleOps.divide)
         .asInstanceOf[Column[Any]]
     else null
   }
@@ -234,7 +247,8 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
    */
   def *(that: Column[_]) = {
     if (isDouble && that.isDouble)
-      ColumnOfDoublesOps.withColumnOfDoubles(this.asInstanceOf[Column[Double]], that.asInstanceOf[Column[Double]], DoubleOps.multiply)
+      ColumnOfDoublesOps.withColumnOfDoubles(sc, this.castDouble,
+        that.castDouble, DoubleOps.multiply)
         .asInstanceOf[Column[Any]]
     else null
   }
@@ -244,9 +258,11 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
    */
   def >>(that: Column[_]) = {
     if (isDouble && that.isDouble)
-      ColumnOfDoublesOps.withColumnOfDoubles(this.asInstanceOf[Column[Double]], that.asInstanceOf[Column[Double]], DoubleOps.gt)
+      ColumnOfDoublesOps.withColumnOfDoubles(sc, this.castDouble,
+        that.castDouble, DoubleOps.gt)
     else if (isString && that.isString)
-      ColumnOfStringsOps.withColumnOfString(this.asInstanceOf[Column[String]], that.asInstanceOf[Column[String]], StringOps.gt)
+      ColumnOfStringsOps.withColumnOfString(sc, this.castString,
+        that.castString, StringOps.gt)
     else null
   }
 
@@ -449,10 +465,10 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
    * the new column does not belong to any DF automatically
    */
   def map[U: ClassTag](mapper: Any => U) = {
-    val mapped = if(isDouble) {
-       number.map { row => mapper(row) }
+    val mapped = if (isDouble) {
+      doubleRdd.map { row => mapper(row)}
     } else {
-       string.map { row => mapper(row) }
+      stringRdd.map { row => mapper(row)}
     }
     if (classTag[U] == classTag[Double])
       Column(sc, mapped.asInstanceOf[RDD[Double]])
@@ -461,17 +477,18 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   }
 
   def num_map[U: ClassTag](mapper: Double => U) = {
-    val mapped = if(isDouble) {
-      number.map { row => mapper(row) }
+    val mapped = if (isDouble) {
+      doubleRdd.map { row => mapper(row)}
     }
     if (classTag[U] == classTag[Double])
       Column(sc, mapped.asInstanceOf[RDD[Double]])
     else
       Column(sc, mapped.asInstanceOf[RDD[String]])
   }
+
   def str_map[U: ClassTag](mapper: String => U) = {
-    val mapped = if(isString) {
-      string.map { row => mapper(row) }
+    val mapped = if (isString) {
+      stringRdd.map { row => mapper(row)}
     }
     if (classTag[U] == classTag[Double])
       Column(sc, mapped.asInstanceOf[RDD[Double]])
@@ -479,174 +496,10 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
       Column(sc, mapped.asInstanceOf[RDD[String]])
   }
 
-  private case object ColumnOfDoublesOps {
-    def withColumnOfDoubles(a: Column[Double], b: Column[Double], oper: (Double, Double) => Double) = {
-      val zipped = a.number.zip(b.number)
-      val result = zipped.map { x => oper(x._1, x._2)}
-      Column(sc, result)
-    }
-
-    def filterDouble(a: Column[Double], b: Double, oper: (Double, Double) => Boolean) = {
-      val result = a.number.filter { x => oper(x, b)}
-      Column(sc, result)
-    }
-
-    def withColumnOfString(a: Column[Double], b: Column[String], oper: (Double, String) => String) = {
-      val zipped = a.number.zip(b.string)
-      val result = zipped.map { x => oper(x._1, x._2)}
-      Column(sc, result)
-    }
-
-    def withScalarDouble(a: Column[Double], b: Double, oper: (Double, Double) => Double) = {
-      val result = a.number.map { x => oper(x, b)}
-      Column(sc, result)
-    }
-
-    def withScalarString(a: Column[Double], b: String, oper: (Double, String) => String) = {
-      val result = a.number.map { x => oper(x, b)}
-      Column(sc, result)
-    }
-  }
-
-  private case object ColumnOfStringsOps {
-    def withColumnOfDoubles(a: Column[String], b: Column[Double], oper: (String, Double) => String) = {
-      val zipped = a.string.zip(b.number)
-      val result = zipped.map { x => oper(x._1, x._2)}
-      Column(sc, result)
-    }
-
-    def filterDouble(a: Column[String], b: Double, oper: (String, Double) => Boolean) = {
-      val result = a.string.filter { x => oper(x, b)}
-      Column(sc, result)
-    }
-
-    def withColumnOfString(a: Column[String], b: Column[String], oper: (String, String) => String) = {
-      val zipped = a.string.zip(b.string)
-      val result = zipped.map { x => oper(x._1, x._2)}
-      Column(sc, result)
-    }
-
-    def withScalarDouble(a: Column[String], b: Double, oper: (String, Double) => String) = {
-      val result = a.string.map { x => oper(x, b)}
-      Column(sc, result)
-    }
-
-    def withScalarString(a: Column[String], b: String, oper: (String, String) => String) = {
-      val result = a.string.map { x => oper(x, b)}
-      Column(sc, result)
-    }
-  }
-
-}
-
-/*
- * operations with a double as first param
- */
-case object DoubleOps {
-  def addDouble(a: Double, b: Double) = a + b
-
-  def subtract(a: Double, b: Double) = a - b
-
-  def divide(a: Double, b: Double) = a / b
-
-  def multiply(a: Double, b: Double) = a * b
-
-  def addString(a: Double, b: String) = a + b
-
-  def gt(a: Double, b: Double) = colBool(a > b)
-
-  def gte(a: Double, b: Double) = colBool(a >= b)
-
-  def lt(a: Double, b: Double) = colBool(a < b)
-
-  def lte(a: Double, b: Double) = colBool(a <= b)
-
-  private def colBool(bool: Boolean) = {
-    if (bool) 1.0 else 0.0
-  }
-
-  def eq(a: Double, b: Double) = colBool(a == b)
-
-  def neq(a: Double, b: Double) = colBool(a != b)
-
-  def gtFilter(b: Double)(a: Double) = a > b
-
-  def gteFilter(b: Double)(a: Double) = a >= b
-
-  def ltFilter(b: Double)(a: Double) = a < b
-
-  def lteFilter(b: Double)(a: Double) = a <= b
-
-  def eqFilter(b: Double)(a: Double) = a == b
-
-  def neqFilter(b: Double)(a: Double) = a != b
-
-  def gtColumn(a: Double, b: Double) = a > b
-
-  def gteColumn(a: Double, b: Double) = a >= b
-
-  def ltColumn(a: Double, b: Double) = a < b
-
-  def lteColumn(a: Double, b: Double) = a <= b
-
-  def eqColumn(a: Double, b: Double) = a == b
-
-  def neqColumn(a: Double, b: Double) = a != b
-}
-
-/*
- * operations with a string as first param
- */
-case object StringOps {
-  def addDouble(a: String, b: Double) = a + b
-
-  def multiply(a: String, b: Double) = a * b.toInt
-
-  def addString(a: String, b: String) = a + b
-
-  def gt(a: String, b: String) = colBool(a > b)
-
-  def gte(a: String, b: String) = colBool(a >= b)
-
-  def lt(a: String, b: String) = colBool(a < b)
-
-  private def colBool(bool: Boolean) = {
-    if (bool) "t" else "f"
-  }
-
-  def lte(a: String, b: String) = colBool(a <= b)
-
-  def eq(a: String, b: String) = colBool(a == b)
-
-  def neq(a: String, b: String) = colBool(a != b)
-
-  def gtFilter(b: String)(a: String) = a > b
-
-  def gteFilter(b: String)(a: String) = a >= b
-
-  def ltFilter(b: String)(a: String) = a < b
-
-  def lteFilter(b: String)(a: String) = a <= b
-
-  def eqFilter(b: String)(a: String) = a == b
-
-  def neqFilter(b: String)(a: String) = a != b
-
-  def gtColumn(a: String, b: String) = a > b
-
-  def gteColumn(a: String, b: String) = a >= b
-
-  def ltColumn(a: String, b: String) = a < b
-
-  def lteColumn(a: String, b: String) = a <= b
-
-  def eqColumn(a: String, b: String) = a == b
-
-  def neqColumn(a: String, b: String) = a != b
 }
 
 object Column {
-  def asDoubles(sCtx: SparkContext, stringRdd: RDD[String], index: Int, cacheLevel: StorageLevel): Column[Double] = {
+  def asDoubles(sCtx: SparkContext, stringRdd: RDD[String], index: Int, cacheLevel: StorageLevel) = {
     val col = new Column[Double](sCtx, null, index)
     val parseErrors = col.parseErrors
 
@@ -668,7 +521,7 @@ object Column {
   /**
    * create Column from existing RDD
    */
-  def apply[T: ru.TypeTag](sCtx: SparkContext, rdd: RDD[T], index: Int = -1): Column[Any] = {
+  def apply[T: ru.TypeTag](sCtx: SparkContext, rdd: RDD[T], index: Int = -1) = {
     val tpe = ru.typeOf[T]
     if (tpe =:= ru.typeOf[Double])
       newDoubleColumn(sCtx, rdd.asInstanceOf[RDD[Double]], index)

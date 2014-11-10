@@ -158,7 +158,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
     test("Parsing: Parse doubles") {
         val df = makeDFFromCSVFile("src/test/resources/mixedDoubles.csv")
         df.cols.foreach { col =>
-          if(col._2.isDouble) col._2.number.collect
+          if(col._2.isDouble) col._2.doubleRdd.collect
           else null
         }
         assert(df("Feature1").parseErrors.value === 1)
@@ -251,32 +251,32 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
 
     test("Column Ops: New column as simple function of existing ones") {
         val df = makeDF
-        val aa = df("a").number.first
-        val bb = df("b").number.first
+        val aa = df("a").doubleRdd.first
+        val bb = df("b").doubleRdd.first
 
         df("new") = df("a") + df("b")
-        assert(df("new").number.first === aa + bb)
+        assert(df("new").doubleRdd.first === aa + bb)
         df("new") = df("a") - df("b")
-        assert(df("new").number.first === aa - bb)
+        assert(df("new").doubleRdd.first === aa - bb)
         df("new") = df("a") * df("b")
-        assert(df("new").number.first === aa * bb)
+        assert(df("new").doubleRdd.first === aa * bb)
         df("new") = df("a") / df("b")
-        assert(df("new").number.first === aa / bb)
+        assert(df("new").doubleRdd.first === aa / bb)
     }
 
     test("Column Ops: New column as custom function of existing ones") {
         val df = makeDF
         df("new") = df("a", "b").map(TestFunctions.summer)
-        assert(df("new").number.first === 21 + 11)
+        assert(df("new").doubleRdd.first === 21 + 11)
     }
 
     test("Aggregate") {
         val df = makeDF
         df("groupByThis") = df("a").num_map { x => 1.0 }
         val sumOfA = df.aggregate("groupByThis", "a", AggSimple)
-        assert(sumOfA("a").number.first === df("a").number.sum)
+        assert(sumOfA("a").doubleRdd.first === df("a").doubleRdd.sum)
         val arrOfA = df.aggregate("groupByThis", "a", AggCustom)
-        assert(arrOfA("a").number.first === df("a").number.sum)
+        assert(arrOfA("a").doubleRdd.first === df("a").doubleRdd.sum)
     }
 
     test ("Aggregate multi") {
@@ -290,7 +290,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
       val df = makeDFWithString
       df("groupByThis") = df("a").str_map( x => "hey")
       val arrOfA = df.aggregate("groupByThis", "a", new AggMakeString(sep=";"))
-      val strOfA = arrOfA("a").string.first
+      val strOfA = arrOfA("a").stringRdd.first
       assert(strOfA.contains("11.0") && strOfA.contains("12.0") && strOfA.contains("13.0"))
     }
 
@@ -301,7 +301,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         df2.list
         assert(df2.numRows === 3)
         assert(df2.numCols === 6)
-        val df3 = df2("S_Customer@Period==2.0").string.zip(df2("S_Customer@Period==1.0").string)
+        val df3 = df2("S_Customer@Period==2.0").stringRdd.zip(df2("S_Customer@Period==1.0").stringRdd)
         val bad = sc.accumulator(0)
         df3.foreach { case (a, b) => 
             if(!a.isEmpty && !b.isEmpty && a != b)
