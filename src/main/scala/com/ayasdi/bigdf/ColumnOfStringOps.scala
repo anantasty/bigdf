@@ -7,7 +7,6 @@ package com.ayasdi.bigdf
 
 import org.apache.spark.SparkContext
 
-import scala.reflect.runtime.{universe => ru}
 
 private case object ColumnOfStringsOps {
   def withColumnOfDoubles(sc: SparkContext, a: Column[String], b: Column[Double], oper: (String, Double) => String) = {

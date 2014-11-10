@@ -7,8 +7,6 @@ package com.ayasdi.bigdf
 
 import org.apache.spark.SparkContext
 
-import scala.reflect.runtime.{universe => ru}
-
 private[bigdf] case object ColumnOfDoublesOps {
   def withColumnOfDoubles(sc: SparkContext, a: Column[Double], b: Column[Double], oper: (Double, Double) => Double) = {
     val zipped = a.doubleRdd.zip(b.doubleRdd)
