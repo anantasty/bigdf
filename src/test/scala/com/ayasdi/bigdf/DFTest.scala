@@ -14,6 +14,7 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.scalatest.{BeforeAndAfterAll, FunSuite}
 
 import scala.collection.TraversableOnce.MonadOps
+import Preamble._
 
 class DFTest extends FunSuite with BeforeAndAfterAll {
     var sc: SparkContext = _
@@ -243,7 +244,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
     test("NA: Marking a value as NA") {
         val df = makeDFWithNulls
         assert(df.countRowsWithNA === 0)
-        df("a").markNA(-1)
+        df("a").markNA(-1.0)
         assert(df.countRowsWithNA === 1)
         df("b").markNA("NULL")
         assert(df.countRowsWithNA === 2)

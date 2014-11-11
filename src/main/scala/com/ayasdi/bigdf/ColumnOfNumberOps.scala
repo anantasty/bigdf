@@ -5,6 +5,9 @@
  */
 package com.ayasdi.bigdf
 
+import org.apache.spark.rdd.DoubleRDDFunctions
+import org.apache.spark.util.StatCounter
+
 import scala.reflect.runtime.{universe => ru}
 import org.apache.spark.SparkContext
 
@@ -40,7 +43,7 @@ private[bigdf] abstract class ColumnOfNumberOps[T: ru.TypeTag] {
 }
 
 private[bigdf] case object ColumnOfDoublesOps extends ColumnOfNumberOps[Double]
-
+private[bigdf] case object ColumnOfFloatsOps extends ColumnOfNumberOps[Float]
 
 /*
  * operations with a double as first param
@@ -150,4 +153,36 @@ case object FloatOps {
   def eqColumn(a: Float, b: Float) = a == b
 
   def neqColumn(a: Float, b: Float) = a != b
+}
+
+
+class RichColumnDouble(self: Column[Double]) {
+  /**
+   * statistical information about this column
+   */
+  var cachedStats: StatCounter = null
+  def stats = if (cachedStats != null) cachedStats
+  else new DoubleRDDFunctions(self.getRdd[Double]).stats
+
+  def printStats(): Unit = {
+    println(s"\tmax:${stats.max}\n\tmin:${stats.min}\n\tcount:${stats.count}\n\tsum:${stats.sum}\n")
+    println(s"\tmean:${stats.mean}\n\tvariance(sample):${stats.sampleVariance}\n\tstddev(sample):${stats.sampleStdev}\n")
+    println(s"\tvariance:${stats.variance}\n\tstddev:${stats.stdev}")
+  }
+  /**
+   * mark this value as NA
+   */
+  def markNA(naVal: Double): Unit = {
+    cachedStats = null
+    self.rdd = self.doubleRdd.map { cell => if (cell == naVal) Double.NaN else cell}
+  }
+
+  /**
+   * replace NA with another number
+   */
+  def fillNA(value: Double): Unit = {
+    cachedStats = null
+    self.rdd = self.doubleRdd.map { cell => if (cell.isNaN) value else cell}
+  }
+
 }

@@ -88,3 +88,19 @@ case object StringOps {
 
   def neqColumn(a: String, b: String) = a != b
 }
+
+class RichColumnString(self: Column[String]) {
+
+  /**
+   * mark a string as NA: mutates the string to empty string
+   */
+  def markNA(naVal: String): Unit = {
+    self.rdd = self.stringRdd.map {cell => if (cell == naVal) "" else cell}
+  }
+  /**
+   * replace NA with another string
+   */
+  def fillNA(value: String): Unit = {
+    self.rdd = self.stringRdd.map { cell => if (cell.isEmpty) value else cell}
+  }
+}
