@@ -287,6 +287,27 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         assert(df("new").doubleRdd.first === aa / bb)
     }
 
+    test("Column Ops: New column as simple function of existing column and scalar") {
+      var df = makeDF
+      val aa = df("a").doubleRdd.first
+
+      df("new") = df("a") + 2
+      assert(df("new").doubleRdd.first === aa + 2)
+      df("new") = df("a") - 2
+      assert(df("new").doubleRdd.first === aa - 2)
+      df("new") = df("a") * 2
+      assert(df("new").doubleRdd.first === aa * 2)
+      df("new") = df("a") / 2
+      assert(df("new").doubleRdd.first === aa / 2)
+
+      df = makeDFWithString
+      val aaa = df("a").stringRdd.first
+      df("new") = df("a") + "2"
+      assert(df("new").stringRdd.first === aaa + 2)
+      df("new") = df("a") * "2"
+      assert(df("new").stringRdd.first === aaa * 2)
+    }
+
     test("Column Ops: New column as custom function of existing ones") {
         val df = makeDF
         df("new") = df("a", "b").map(TestFunctions.summer)
