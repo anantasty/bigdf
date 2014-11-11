@@ -28,14 +28,14 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
       }
     }
 
-    override def beforeAll {
+    override def beforeAll: Unit = {
         SparkUtil.silenceSpark
         System.clearProperty("spark.master.port")
         sc = new SparkContext("local[4]", "abcd")
         fileCleanup
     }
 
-    override def afterAll {
+    override def afterAll: Unit = {
         fileCleanup
         sc.stop
     }
@@ -165,6 +165,22 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         assert(df("Feature1").parseErrors.value === 1)
     }
 
+    test("Double to Categorical") {
+        val df = makeDF
+        val nCols = df.numCols
+        df("cat_a") = df("a").asCategorical
+        df("cat_a").shortRdd.collect
+        assert(df("cat_a").parseErrors.value === 0)
+        assert(df.numCols === nCols + 1)
+    }
+
+    test("Double to Categorical: errors") {
+        val df = makeDFFromCSVFile("src/test/resources/mixedDoubles.csv")
+        df("cat_f1") = df("Feature1").asCategorical
+        df("cat_f1").shortRdd.collect
+        assert(df("cat_f1").parseErrors.value === 2)
+    }
+
     test("Filter/Select: Double Column comparisons with Scalar") {
         val df = makeDF
         val dfEq12 = df(df("a") == 12)
@@ -233,12 +249,18 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
     }
 
     test("NA: Replacing NA with something else") {
-        val df = makeDFWithNAs
+        var df = makeDFWithNAs
         assert(df.countRowsWithNA === 2)
         df("a").fillNA(99.0)
         assert(df.countRowsWithNA === 1)
         df("b").fillNA("hi")
         assert(df.countRowsWithNA === 0)
+
+        df = makeDFWithNAs
+        df("cat_a") = df("a").asCategorical
+        df("cat_a").markNACategory(0)
+        df.list
+        assert(df("cat_a").hasNA)
     }
     
     test("NA: Marking a value as NA") {

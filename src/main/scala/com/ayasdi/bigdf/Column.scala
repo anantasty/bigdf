@@ -16,8 +16,12 @@ import scala.reflect.{ClassTag, classTag}
 object Preamble {
   implicit def columnDoubleToRichColumnDouble(col: Column[Double]) = new RichColumnDouble(col)
   implicit def columnAnyToRichColumnDouble(col: Column[Any]) = new RichColumnDouble(col.castDouble)
+
   implicit def columnStringToRichColumnString(col: Column[String]) = new RichColumnString(col)
   implicit def columnAnyToRichColumnString(col: Column[Any]) = new RichColumnString(col.castString)
+
+  implicit def columnShortToRichColumnCategory(col: Column[Short]) = new RichColumnCategory(col.castShort)
+  implicit def columnAnyToRichColumnCategory(col: Column[Any]) = new RichColumnCategory(col.castShort)
 }
 
 class Column[+T: ru.TypeTag] private(val sc: SparkContext,
@@ -36,6 +40,7 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   val isDouble = ru.typeOf[T] =:= ru.typeOf[Double]
   val isFloat = ru.typeOf[T] =:= ru.typeOf[Float]
   val isString = ru.typeOf[T] =:= ru.typeOf[String]
+  val isShort = ru.typeOf[T] =:= ru.typeOf[Short]
   val getType = ru.typeOf[T]
 
   /**
@@ -65,6 +70,10 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
     this.asInstanceOf[Column[Float]]
   }
 
+  def castShort= {
+    require(isShort)
+    this.asInstanceOf[Column[Short]]
+  }
 
   override def toString = {
     s"rdd: ${rdd.name} index: $index type: $getType"
@@ -128,13 +137,24 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
    */
   def countNA = {
     if (isDouble) {
-      rdd.asInstanceOf[RDD[Double]].filter {
+      doubleRdd.filter {
         _.isNaN
       }.count
-    } else {
-      rdd.asInstanceOf[RDD[String]].filter {
+    } else if (isFloat) {
+      floatRdd.filter {
+        _.isNaN
+      }.count
+    } else if(isString) {
+      stringRdd.filter {
         _.isEmpty
       }.count
+    } else if(isShort) {
+      shortRdd.filter {
+        _ == RichColumnCategory.CATEGORY_NA
+      }.count
+    } else {
+      println(s"ERROR: wrong column type ${getType}")
+      0L
     }
   }
 
@@ -145,9 +165,19 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   def doubleRdd = getRdd[Double]
 
   /**
+   * get rdd of doubles to use doublerddfunctions
+   */
+  def floatRdd = getRdd[Float]
+
+  /**
    * get rdd of strings to do string functions
    */
   def stringRdd = getRdd[String]
+
+  /**
+   * get rdd of strings to do string functions
+   */
+  def shortRdd = getRdd[Short]
 
   /**
    * get the RDD typecast to the given type
@@ -157,6 +187,14 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   def getRdd[R: ru.TypeTag] = {
      require(ru.typeOf[R] =:= ru.typeOf[T])
      rdd.asInstanceOf[RDD[R]]
+  }
+
+  /**
+   * transform column of doubles to a categorical column (column of shorts)
+   */
+  def asCategorical = {
+    require(isDouble)
+    Column.asShorts(sc, doubleRdd, -1, doubleRdd.getStorageLevel)
   }
 
   /**
@@ -405,6 +443,22 @@ object Column {
     }
     floatRdd.setName(s"${stringRdd.name}.toFloat").persist(cacheLevel)
     col.rdd = floatRdd.asInstanceOf[RDD[Any]]
+
+    col
+  }
+
+  def asShorts(sCtx: SparkContext, doubleRdd: RDD[Double], index: Int, cacheLevel: StorageLevel) = {
+    val col = new Column[Short](sCtx, null, index)
+    val parseErrors = col.parseErrors
+
+    val shortRdd = doubleRdd.map { x =>
+      val y = x.toShort
+      if(y != x || x.isNaN) parseErrors += 1
+      y
+    }
+
+    shortRdd.setName(s"${doubleRdd.name}.toShort").persist(cacheLevel)
+    col.rdd = shortRdd.asInstanceOf[RDD[Any]]
 
     col
   }
