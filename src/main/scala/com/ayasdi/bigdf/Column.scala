@@ -164,11 +164,12 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
    * get rdd of doubles to use doublerddfunctions
    */
   def doubleRdd = {
-    if (isDouble) {
-      rdd.asInstanceOf[RDD[Double]]
-    } else {
-      null
-    }
+    getRdd[Double]
+  }
+
+  def getRdd[R: ru.TypeTag] = {
+     require(ru.typeOf[R] =:= ru.typeOf[T])
+     rdd.asInstanceOf[RDD[R]]
   }
 
   /**
