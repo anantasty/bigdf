@@ -33,15 +33,23 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
    */
   lazy val count = rdd.count
   val parseErrors = sc.accumulator(0L)
+
   /**
    * what is the column type?
    */
-  val isDouble: Boolean = ru.typeOf[T] =:= ru.typeOf[Double]
-  val isString: Boolean = ru.typeOf[T] =:= ru.typeOf[String]
-  val getType: String = if (isDouble) "Double" else "String"
+  val isDouble = ru.typeOf[T] =:= ru.typeOf[Double]
+  val isFloat = ru.typeOf[T] =:= ru.typeOf[Float]
+  val isString = ru.typeOf[T] =:= ru.typeOf[String]
+  val getType = ru.typeOf[T]
 
+  /**
+   * Spark uses ClassTag but bigdf uses the more functional TypeTag. This method compares the two.
+   * @tparam C classtag to compare
+   * @return true if this column type and passed in classtag are the same, false otherwise
+   */
   def compareType[C: ClassTag] = {
     if (isDouble) classTag[C] == classTag[Double]
+    else if (isFloat) classTag[C] == classTag[Double]
     else if (isString) classTag[C] == classTag[String]
     else false
   }
@@ -54,6 +62,11 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   def castString = {
     require(isString)
     this.asInstanceOf[Column[String]]
+  }
+
+  def castFloat = {
+    require(isFloat)
+    this.asInstanceOf[Column[Float]]
   }
   /**
    * statistical information about this column
@@ -78,7 +91,7 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   }
 
   def stats = if (cachedStats != null) cachedStats
-  else new DoubleRDDFunctions(rdd.asInstanceOf[RDD[Double]]).stats
+  else new DoubleRDDFunctions(getRdd[Double]).stats
 
   /**
    * print upto max(default 10) elements
@@ -105,17 +118,6 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
         }
     } else {
       println("Wrong type!")
-    }
-  }
-
-  /**
-   * get rdd of strings to do string functions
-   */
-  def stringRdd = {
-    if (isString) {
-      rdd.asInstanceOf[RDD[String]]
-    } else {
-      null
     }
   }
 
@@ -163,10 +165,18 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   /**
    * get rdd of doubles to use doublerddfunctions
    */
-  def doubleRdd = {
-    getRdd[Double]
-  }
+  def doubleRdd = getRdd[Double]
 
+  /**
+   * get rdd of strings to do string functions
+   */
+  def stringRdd = getRdd[String]
+
+  /**
+   * get the RDD typecast to the given type
+   * @tparam R
+   * @return RDD of R's. throws exception if the cast is not applicable to this column
+   */
   def getRdd[R: ru.TypeTag] = {
      require(ru.typeOf[R] =:= ru.typeOf[T])
      rdd.asInstanceOf[RDD[R]]
@@ -519,6 +529,25 @@ object Column {
     col
   }
 
+  def asFloats(sCtx: SparkContext, stringRdd: RDD[String], index: Int, cacheLevel: StorageLevel) = {
+    val col = new Column[Float](sCtx, null, index)
+    val parseErrors = col.parseErrors
+
+    val floatRdd = stringRdd.map { x =>
+      var y = Double.NaN
+      try {
+        y = x.toFloat
+      } catch {
+        case _: java.lang.NumberFormatException => parseErrors += 1
+      }
+      y
+    }
+    floatRdd.setName(s"${stringRdd.name}.toFloat").persist(cacheLevel)
+    col.rdd = floatRdd.asInstanceOf[RDD[Any]]
+
+    col
+  }
+
   /**
    * create Column from existing RDD
    */
@@ -526,6 +555,8 @@ object Column {
     val tpe = ru.typeOf[T]
     if (tpe =:= ru.typeOf[Double])
       newDoubleColumn(sCtx, rdd.asInstanceOf[RDD[Double]], index)
+    else if (tpe =:= ru.typeOf[Float])
+      newFloatColumn(sCtx, rdd.asInstanceOf[RDD[Float]], index)
     else if (tpe =:= ru.typeOf[String])
       newStringColumn(sCtx, rdd.asInstanceOf[RDD[String]], index)
     else null
@@ -533,6 +564,10 @@ object Column {
 
   private def newDoubleColumn(sCtx: SparkContext, rdd: RDD[Double], index: Int) = {
     new Column[Double](sCtx, rdd.asInstanceOf[RDD[Any]], index)
+  }
+
+  private def newFloatColumn(sCtx: SparkContext, rdd: RDD[Float], index: Int) = {
+    new Column[Float](sCtx, rdd.asInstanceOf[RDD[Any]], index)
   }
 
   private def newStringColumn(sCtx: SparkContext, rdd: RDD[String], index: Int) = {
