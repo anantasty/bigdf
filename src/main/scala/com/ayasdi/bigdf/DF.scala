@@ -39,7 +39,7 @@ case class DF private(val sc: SparkContext,
    * number of rows in df
    * @return number of rows
    */
-  lazy val numRows = if (cols.head._2 == null) 0 else cols.head._2.rdd.count
+  lazy val numRows = if (null == cols.head._2) 0 else cols.head._2.rdd.count
   /**
    * for large number of columns, column based filtering is faster. it is the default. try changing this
    * to true for DF with few columns
@@ -102,8 +102,8 @@ case class DF private(val sc: SparkContext,
   def columnsByNames(colNames: Seq[String]) = {
     val selectedCols = for (colName <- colNames)
     yield (colName, cols.getOrElse(colName, null))
-    if (selectedCols.exists(_._2 == null)) {
-      val notFound = selectedCols.filter(_._2 == null)
+    if (selectedCols.exists(null == _._2)) {
+      val notFound = selectedCols.filter(null == _._2)
       println("You sure? I don't know about these columns" + notFound.mkString(","))
       null
     } else {
@@ -448,7 +448,7 @@ case class DF private(val sc: SparkContext,
    */
   def column(colName: String) = {
     val col = cols.getOrElse(colName, null)
-    if (col == null) println(s"${colName} not found")
+    if (null == col) println(s"${colName} not found")
     col
   }
 
@@ -459,7 +459,7 @@ case class DF private(val sc: SparkContext,
     val col = cols.getOrElse(colName, null)
 
     cols.put(colName, that)
-    if (col != null) {
+    if (null != col) {
       println(s"Replaced Column: ${colName}")
       that.index = col.index
     } else {
