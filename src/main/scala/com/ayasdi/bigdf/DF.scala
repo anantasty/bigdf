@@ -29,7 +29,12 @@ object JoinType extends Enumeration {
  * Data Frame is a map of column key to an RDD containing that column
  * constructor is private, instances are created by factory calls(apply) in 
  * companion object
- * Number of rows cannot change. Columns can be added, removed, mutated
+ * Number of rows cannot change. Columns can be added, removed, mutated.
+ * The following types of columns are supported:
+ * Double
+ * Float
+ * String
+ * Category: stored as a Short category id
  */
 case class DF private(val sc: SparkContext,
                       val cols: HashMap[String, Column[Any]] = new HashMap[String, Column[Any]],
