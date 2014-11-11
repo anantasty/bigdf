@@ -43,6 +43,7 @@ private[bigdf] abstract class ColumnOfNumberOps[T: ru.TypeTag] {
 }
 
 private[bigdf] case object ColumnOfDoublesOps extends ColumnOfNumberOps[Double]
+
 private[bigdf] case object ColumnOfFloatsOps extends ColumnOfNumberOps[Float]
 
 /*
@@ -61,6 +62,10 @@ case object DoubleOps {
 
   def gt(a: Double, b: Double) = colBool(a > b)
 
+  private def colBool(bool: Boolean) = {
+    if (bool) 1.0 else 0.0
+  }
+
   def gte(a: Double, b: Double) = colBool(a >= b)
 
   def lt(a: Double, b: Double) = colBool(a < b)
@@ -70,10 +75,6 @@ case object DoubleOps {
   def eq(a: Double, b: Double) = colBool(a == b)
 
   def neq(a: Double, b: Double) = colBool(a != b)
-
-  private def colBool(bool: Boolean) = {
-    if (bool) 1.0 else 0.0
-  }
 
   def gtFilter(b: Double)(a: Double) = a > b
 
@@ -122,13 +123,13 @@ case object FloatOps {
 
   def lte(a: Float, b: Float) = colBool(a <= b)
 
-  def eq(a: Float, b: Float) = colBool(a == b)
-
-  def neq(a: Float, b: Float) = colBool(a != b)
-
   private def colBool(bool: Boolean) = {
     if (bool) 1.0 else 0.0
   }
+
+  def eq(a: Float, b: Float) = colBool(a == b)
+
+  def neq(a: Float, b: Float) = colBool(a != b)
 
   def gtFilter(b: Float)(a: Float) = a > b
 
@@ -161,14 +162,16 @@ class RichColumnDouble(self: Column[Double]) {
    * statistical information about this column
    */
   var cachedStats: StatCounter = null
-  def stats = if (cachedStats != null) cachedStats
-  else new DoubleRDDFunctions(self.getRdd[Double]).stats
 
   def printStats(): Unit = {
     println(s"\tmax:${stats.max}\n\tmin:${stats.min}\n\tcount:${stats.count}\n\tsum:${stats.sum}\n")
     println(s"\tmean:${stats.mean}\n\tvariance(sample):${stats.sampleVariance}\n\tstddev(sample):${stats.sampleStdev}\n")
     println(s"\tvariance:${stats.variance}\n\tstddev:${stats.stdev}")
   }
+
+  def stats = if (cachedStats != null) cachedStats
+  else new DoubleRDDFunctions(self.getRdd[Double]).stats
+
   /**
    * mark this value as NA
    */
@@ -184,5 +187,29 @@ class RichColumnDouble(self: Column[Double]) {
     cachedStats = null
     self.rdd = self.doubleRdd.map { cell => if (cell.isNaN) value else cell}
   }
+
+  /**
+   * compare every element in this column with a number
+   */
+  def >=(that: Double) =
+    new DoubleColumnWithDoubleScalarCondition(self.index, DoubleOps.gteFilter(that))
+
+  /**
+   * compare every element in this column with a number
+   */
+  def >(that: Double) =
+    new DoubleColumnWithDoubleScalarCondition(self.index, DoubleOps.gtFilter(that))
+
+  /**
+   * compare every element in this column with a number
+   */
+  def <=(that: Double) =
+    new DoubleColumnWithDoubleScalarCondition(self.index, DoubleOps.lteFilter(that))
+
+  /**
+   * compare every element in this column with a number
+   */
+  def <(that: Double) =
+    new DoubleColumnWithDoubleScalarCondition(self.index, DoubleOps.ltFilter(that))
 
 }
