@@ -7,21 +7,17 @@ package com.ayasdi.bigdf
 
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
-import org.apache.spark.rdd.{DoubleRDDFunctions, RDD}
+import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
-import org.apache.spark.util.StatCounter
 
 import scala.reflect.runtime.{universe => ru}
 import scala.reflect.{ClassTag, classTag}
 
 object Preamble {
-//  implicit def toColumnAny[T](col: Column[T]) = {
-//    col.asInstanceOf[Column[Any]]
-//  }
-//
-//  implicit def toRdd[T](col: Column[T]) = {
-//    col.rdd
-//  }
+  implicit def columnDoubleToRichColumnDouble(col: Column[Double]) = new RichColumnDouble(col)
+  implicit def columnAnyToRichColumnDouble(col: Column[Any]) = new RichColumnDouble(col.castDouble)
+  implicit def columnStringToRichColumnString(col: Column[String]) = new RichColumnString(col)
+  implicit def columnAnyToRichColumnString(col: Column[Any]) = new RichColumnString(col.castString)
 }
 
 class Column[+T: ru.TypeTag] private(val sc: SparkContext,
@@ -68,10 +64,7 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
     require(isFloat)
     this.asInstanceOf[Column[Float]]
   }
-  /**
-   * statistical information about this column
-   */
-  var cachedStats: StatCounter = null
+
 
   override def toString = {
     s"rdd: ${rdd.name} index: $index type: $getType"
@@ -81,17 +74,12 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
    * print brief description of this column
    */
   def describe(): Unit = {
+    import com.ayasdi.bigdf.Preamble._
     val c = if (rdd != null) count else 0
     println(s"\ttype:${getType}\n\tcount:${c}\n\tparseErrors:${parseErrors}")
-    if (isDouble) {
-      println(s"\tmax:${stats.max}\n\tmin:${stats.min}\n\tcount:${stats.count}\n\tsum:${stats.sum}\n")
-      println(s"\tmean:${stats.mean}\n\tvariance(sample):${stats.sampleVariance}\n\tstddev(sample):${stats.sampleStdev}\n")
-      println(s"\tvariance:${stats.variance}\n\tstddev:${stats.stdev}")
-    }
+    if(isDouble) castDouble.printStats
   }
 
-  def stats = if (cachedStats != null) cachedStats
-  else new DoubleRDDFunctions(getRdd[Double]).stats
 
   /**
    * print upto max(default 10) elements
@@ -150,17 +138,6 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
     }
   }
 
-  /**
-   * mark this value as NA
-   */
-  def markNA(naVal: Double): Unit = {
-    cachedStats = null
-    if (isDouble) {
-      rdd = doubleRdd.map { cell => if (cell == naVal) Double.NaN else cell}
-    } else {
-      println("This is not a Double column")
-    }
-  }
 
   /**
    * get rdd of doubles to use doublerddfunctions
@@ -180,42 +157,6 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   def getRdd[R: ru.TypeTag] = {
      require(ru.typeOf[R] =:= ru.typeOf[T])
      rdd.asInstanceOf[RDD[R]]
-  }
-
-  /**
-   * mark a string as NA: mutates the string to empty string
-   */
-  def markNA(naVal: String) {
-    cachedStats = null
-    if (isString) {
-      rdd = stringRdd.map { cell => if (cell == naVal) "" else cell}
-    } else {
-      println("This is not a String column")
-    }
-  }
-
-  /**
-   * replace NA with another number
-   */
-  def fillNA(value: Double) {
-    cachedStats = null
-    if (isDouble) {
-      rdd = doubleRdd.map { cell => if (cell.isNaN) value else cell}
-    } else {
-      println("This is not a Double column")
-    }
-  }
-
-  /**
-   * replace NA with another string
-   */
-  def fillNA(value: String) {
-    cachedStats = null
-    if (isString) {
-      rdd = stringRdd.map { cell => if (cell.isEmpty) value else cell}
-    } else {
-      println("This is not a String column")
-    }
   }
 
   /**
