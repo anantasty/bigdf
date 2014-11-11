@@ -103,4 +103,27 @@ class RichColumnString(self: Column[String]) {
   def fillNA(value: String): Unit = {
     self.rdd = self.stringRdd.map { cell => if (cell.isEmpty) value else cell}
   }
+  /**
+   * compare every element in this column with a number
+   */
+  def >=(that: String) =
+      new StringColumnWithStringScalarCondition(self.index, StringOps.gteFilter(that))
+  /**
+   * compare every element in this column with a number
+   */
+  def >(that: String) =
+      new StringColumnWithStringScalarCondition(self.index, StringOps.gtFilter(that))
+
+  /**
+   * compare every element in this column with a number
+   */
+  def <=(that: String) =
+      new StringColumnWithStringScalarCondition(self.index, StringOps.lteFilter(that))
+
+  /**
+   * compare every element in this column with a number
+   */
+  def <(that: String) =
+      new StringColumnWithStringScalarCondition(self.index, StringOps.ltFilter(that))
+
 }

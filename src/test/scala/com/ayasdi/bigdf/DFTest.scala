@@ -167,7 +167,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
 
     test("Filter/Select: Double Column comparisons with Scalar") {
         val df = makeDF
-        val dfEq12 = df(df("a") == 12.0)
+        val dfEq12 = df(df("a") == 12)
         assert(dfEq12.numRows === 1)
         val dfNe12 = df(df("a") != 12.0)
         assert(dfNe12.numRows === 2)

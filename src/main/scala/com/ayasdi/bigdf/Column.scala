@@ -276,7 +276,7 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   }
 
   /**
-   * compare every element in this column with a number
+   * compare every element in this column of doubles with a double
    */
   def ==(that: Double) = {
     if (isDouble)
@@ -286,57 +286,7 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   }
 
   /**
-   * compare every element in this column with a number
-   */
-  def >=(that: Double) = {
-    if (isDouble)
-      new DoubleColumnWithDoubleScalarCondition(index, DoubleOps.gteFilter(that))
-    else
-      null
-  }
-
-  /**
-   * compare every element in this column with a number
-   */
-  def >(that: Double) = {
-    if (isDouble)
-      new DoubleColumnWithDoubleScalarCondition(index, DoubleOps.gtFilter(that))
-    else
-      null
-  }
-
-  /**
-   * compare every element in this column with a number
-   */
-  def <=(that: Double) = {
-    if (isDouble)
-      new DoubleColumnWithDoubleScalarCondition(index, DoubleOps.lteFilter(that))
-    else
-      null
-  }
-
-  /**
-   * compare every element in this column with a number
-   */
-  def <(that: Double) = {
-    if (isDouble)
-      new DoubleColumnWithDoubleScalarCondition(index, DoubleOps.ltFilter(that))
-    else
-      null
-  }
-
-  /**
-   * compare every element in this column with a number
-   */
-  def !=(that: Double) = {
-    if (isDouble)
-      new DoubleColumnWithDoubleScalarCondition(index, DoubleOps.neqFilter(that))
-    else
-      null
-  }
-
-  /**
-   * compare every element in this column with a number
+   * compare every element in this column of string with a string
    */
   def ==(that: String) = {
     if (isString)
@@ -346,47 +296,17 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   }
 
   /**
-   * compare every element in this column with a number
+   * compare every element in this column of doubles with a double
    */
-  def >=(that: String) = {
-    if (isString)
-      new StringColumnWithStringScalarCondition(index, StringOps.gteFilter(that))
+  def !=(that: Double) = {
+    if (isDouble)
+      new DoubleColumnWithDoubleScalarCondition(index, DoubleOps.neqFilter(that))
     else
       null
   }
 
   /**
-   * compare every element in this column with a number
-   */
-  def >(that: String) = {
-    if (isString)
-      new StringColumnWithStringScalarCondition(index, StringOps.gtFilter(that))
-    else
-      null
-  }
-
-  /**
-   * compare every element in this column with a number
-   */
-  def <=(that: String) = {
-    if (isString)
-      new StringColumnWithStringScalarCondition(index, StringOps.lteFilter(that))
-    else
-      null
-  }
-
-  /**
-   * compare every element in this column with a number
-   */
-  def <(that: String) = {
-    if (isString)
-      new StringColumnWithStringScalarCondition(index, StringOps.ltFilter(that))
-    else
-      null
-  }
-
-  /**
-   * compare every element in this column with a number
+   * compare every element in this column of strings with a string
    */
   def !=(that: String) = {
     if (isString)
