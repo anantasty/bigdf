@@ -97,3 +97,57 @@ case object DoubleOps {
   def neqColumn(a: Double, b: Double) = a != b
 }
 
+/*
+ * operations with a float as first param
+ */
+case object FloatOps {
+  def addFloat(a: Float, b: Float) = a + b
+
+  def subtract(a: Float, b: Float) = a - b
+
+  def divide(a: Float, b: Float) = a / b
+
+  def multiply(a: Float, b: Float) = a * b
+
+  def addString(a: Float, b: String) = a + b
+
+  def gt(a: Float, b: Float) = colBool(a > b)
+
+  def gte(a: Float, b: Float) = colBool(a >= b)
+
+  def lt(a: Float, b: Float) = colBool(a < b)
+
+  def lte(a: Float, b: Float) = colBool(a <= b)
+
+  def eq(a: Float, b: Float) = colBool(a == b)
+
+  def neq(a: Float, b: Float) = colBool(a != b)
+
+  private def colBool(bool: Boolean) = {
+    if (bool) 1.0 else 0.0
+  }
+
+  def gtFilter(b: Float)(a: Float) = a > b
+
+  def gteFilter(b: Float)(a: Float) = a >= b
+
+  def ltFilter(b: Float)(a: Float) = a < b
+
+  def lteFilter(b: Float)(a: Float) = a <= b
+
+  def eqFilter(b: Float)(a: Float) = a == b
+
+  def neqFilter(b: Float)(a: Float) = a != b
+
+  def gtColumn(a: Float, b: Float) = a > b
+
+  def gteColumn(a: Float, b: Float) = a >= b
+
+  def ltColumn(a: Float, b: Float) = a < b
+
+  def lteColumn(a: Float, b: Float) = a <= b
+
+  def eqColumn(a: Float, b: Float) = a == b
+
+  def neqColumn(a: Float, b: Float) = a != b
+}

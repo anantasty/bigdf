@@ -25,12 +25,6 @@ object JoinType extends Enumeration {
   val Inner, Outer = Value
 }
 
-object ColumnType extends Enumeration {
-  //FIXME: get rid of this enum
-  type ColumnType = Value
-  val String, Double = Value
-}
-
 /**
  * Data Frame is a map of column key to an RDD containing that column
  * constructor is private, instances are created by factory calls(apply) in 
@@ -189,10 +183,10 @@ case class DF private(val sc: SparkContext,
       val firstRow = firstRowOption.get
       for (i <- 0 until df.numCols) {
         val t = DF.getType(firstRow(i))
-        val column = if (t == ColumnType.Double) {
+        val column = if (t == ru.typeOf[Double]) {
           val colRdd = filteredRows.map { row => row(i).asInstanceOf[Double]}
           df.cols.put(df.colIndexToName(i), Column(sc, colRdd, i))
-        } else if (t == ColumnType.String) {
+        } else if (t == ru.typeOf[String]) {
           val colRdd = filteredRows.map { row => row(i).asInstanceOf[String]}
           df.cols.put(df.colIndexToName(i), Column(sc, colRdd, i))
         } else {
@@ -582,9 +576,9 @@ object DF {
       }.count
 
       if (parseFailCount > 0)
-        ColumnType.String
+        ru.typeOf[String]
       else
-        ColumnType.Double
+        ru.typeOf[Double]
     }
     /*
      * guess the type of a column by looking at a random sample
@@ -600,9 +594,9 @@ object DF {
       }.length
 
       if (parseFailCount > 0)
-        ColumnType.String
+        ru.typeOf[String]
       else
-        ColumnType.Double
+        ru.typeOf[Double]
     }
 
     /*
@@ -619,9 +613,9 @@ object DF {
         }
       }
       if (parseErrors.value > 0)
-        ColumnType.String
+        ru.typeOf[String]
       else
-        ColumnType.Double
+        ru.typeOf[Double]
     }
 
     val rows = dataLines.map {
@@ -639,7 +633,7 @@ object DF {
       val t = if (fasterGuess) guessType3(columns(i)) else guessType(columns(i))
       col.setName(s"$t/$inFile/${df.colIndexToName(i)}")
       println(s"Column: ${df.colIndexToName(i)} \t\t\tGuessed Type: ${t}")
-      if (t == ColumnType.Double) {
+      if (t == ru.typeOf[Double]) {
         df.cols.put(df.colIndexToName(i), Column.asDoubles(sc, col, i, df.defaultStorageLevel))
         col.unpersist()
       } else {
@@ -778,11 +772,11 @@ object DF {
         val origIndex = joinedIndex - start
         val newColName = joinedColumnName(curDf.colIndexToName(origIndex), start)
         val t = getType(partGetter(firstRow)(origIndex))
-        if (t == ColumnType.Double) {
+        if (t == ru.typeOf[Double]) {
           val colRdd = joinedRows.map { row => partGetter(row)(origIndex).asInstanceOf[Double]}
           val column = Column(curDf.sc, colRdd, joinedIndex)
           df.cols.put(newColName, column)
-        } else if (t == ColumnType.String) {
+        } else if (t == ru.typeOf[String]) {
           val colRdd = joinedRows.map { row => partGetter(row)(origIndex).asInstanceOf[String]}
           val column = Column(curDf.sc, colRdd, joinedIndex)
           df.cols.put(newColName, column)
@@ -817,8 +811,8 @@ object DF {
 
   def getType(elem: Any) = {
     elem match {
-      case x: Double => ColumnType.Double
-      case x: String => ColumnType.String
+      case x: Double => ru.typeOf[Double]
+      case x: String => ru.typeOf[String]
       case _ => {
         println(s"PANIC: unsupported column type ${elem}")
         null
