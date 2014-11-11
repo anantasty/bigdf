@@ -212,4 +212,9 @@ class RichColumnDouble(self: Column[Double]) {
   def <(that: Double) =
     new DoubleColumnWithDoubleScalarCondition(self.index, DoubleOps.ltFilter(that))
 
+  def +(that: Double) = ColumnOfDoublesOps.withScalarDouble(self.sc, self.castDouble, that, DoubleOps.addDouble)
+  def -(that: Double) = ColumnOfDoublesOps.withScalarDouble(self.sc, self.castDouble, that, DoubleOps.subtract)
+  def /(that: Double) = ColumnOfDoublesOps.withScalarDouble(self.sc, self.castDouble, that, DoubleOps.divide)
+  def *(that: Double) = ColumnOfDoublesOps.withScalarDouble(self.sc, self.castDouble, that, DoubleOps.multiply)
+
 }

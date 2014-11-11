@@ -126,4 +126,6 @@ class RichColumnString(self: Column[String]) {
   def <(that: String) =
       new StringColumnWithStringScalarCondition(self.index, StringOps.ltFilter(that))
 
+  def +(that: String) = ColumnOfStringsOps.withScalarString(self.sc, self.castString, that, StringOps.addString)
+  def *(that: String) = ColumnOfStringsOps.withScalarDouble(self.sc, self.castString, that.toInt, StringOps.multiply)
 }
