@@ -47,6 +47,7 @@ $ cp spark/assembly/target/scala-2.xx/spark-assembly-1.2.0-SNAPSHOT-hadoop2.0.0-
 $ cd bigdf
 $ sbt update
 $ sbt package
+$ sbt assembly
 $ sbt test
 ```
 - Start a shell and begin playing.
