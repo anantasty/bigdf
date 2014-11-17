@@ -26,9 +26,9 @@ object JoinType extends Enumeration {
 }
 
 /**
- * Data Frame is a map of column key to an RDD containing that column
- * constructor is private, instances are created by factory calls(apply) in 
- * companion object
+ * Data Frame is a map of column key to an RDD containing that column.
+ * Constructor is private, instances are created by factory calls(apply) in
+ * companion object.
  * Number of rows cannot change. Columns can be added, removed, mutated.
  * The following types of columns are supported:
  * Double
@@ -44,18 +44,36 @@ case class DF private(val sc: SparkContext,
    * number of rows in df
    * @return number of rows
    */
-  lazy val numRows = if (null == cols.head._2) 0 else cols.head._2.rdd.count
+  lazy val numRows = {
+    require(numCols > 0)
+    cols.head._2.rdd.count
+  }
+
   /**
-   * for large number of columns, column based filtering is faster. it is the default. try changing this
-   * to true for DF with few columns
+   * number of columns in df
+   * @return number of columns
+   */
+  def numCols = cols.size
+
+  /**
+   * for large number of columns, column based filtering is faster. it is the default.
+   * try changing this to true for DF with few columns
    */
   var filterWithRowStrategy = false
-  var aggWithRowStrategy = false
+
   /**
    * default rdd caching storage level
    */
   var defaultStorageLevel: StorageLevel = MEMORY_ONLY_SER
-  private var rowsRddCached: RDD[Array[Any]] = null
+
+  private var rowsRddCached: Option[RDD[Array[Any]]] = None
+  private def rowsRdd = {
+    if(rowsRddCached.isEmpty) {
+      rowsRddCached = Some(computeRows)
+      rowsRddCached.get.setName(s"${name}").persist(defaultStorageLevel)
+    }
+    rowsRddCached.get
+  }
 
   def colNames = {
     (0 until numCols).map { colIndex => colIndexToName(colIndex)}.toArray
@@ -71,7 +89,7 @@ case class DF private(val sc: SparkContext,
    * @param separator use this separator, default is comma
    */
   def toCSV(file: String, separator: String = ",") = {
-    rowsRdd.map { row => row.mkString(separator)}.saveAsTextFile(file)
+    rowsRdd.map { row => row.mkString(separator) }.saveAsTextFile(file)
   }
 
   /**
@@ -89,15 +107,18 @@ case class DF private(val sc: SparkContext,
    */
   def apply[T: ru.TypeTag](items: T*): ColumnSeq = {
     val tpe = ru.typeOf[T]
+
+    require(tpe =:= ru.typeOf[Int] || tpe =:= ru.typeOf[String] ||
+            tpe =:= ru.typeOf[Range] || tpe =:= ru.typeOf[Range.Inclusive],
+            s"Unexpected argument list of type $tpe")
+
     if (tpe =:= ru.typeOf[Int])
       columnsByIndices(items.asInstanceOf[Seq[Int]])
     else if (tpe =:= ru.typeOf[String])
       columnsByNames(items.asInstanceOf[Seq[String]])
     else if (tpe =:= ru.typeOf[Range] || tpe =:= ru.typeOf[Range.Inclusive])
       columnsByRanges(items.asInstanceOf[Seq[Range]])
-    else {
-      println("got " + tpe); null
-    }
+    else null
   }
 
   /**
@@ -231,9 +252,10 @@ case class DF private(val sc: SparkContext,
 
   /**
    * number of rows that have NA(NaN or empty string)
+   * somewhat expensive, don't use this if count of NAs per column suffices
    */
   def countRowsWithNA = {
-    rowsRddCached = null //fillNA could have mutated columns, recalculate rows
+    rowsRddCached = None //fillNA could have mutated columns, recalculate rows
     val x = rowsRdd.map { row => if (CountHelper.countNaN(row) > 0) 1 else 0}
     x.reduce {
       _ + _
@@ -241,7 +263,7 @@ case class DF private(val sc: SparkContext,
   }
 
   /**
-   * number of columns that have NA(NaN or empty string)
+   * number of columns that have NA
    */
   def countColsWithNA = {
     cols.map { col => if (col._2.hasNA) 1 else 0}.reduce {
@@ -250,11 +272,21 @@ case class DF private(val sc: SparkContext,
   }
 
   /**
-   * create a new DF after removing all rows that had NAs(NaNs or empty strings)
+   * create a new DF after removing all rows that had NAs
    */
-  def dropNA = {
-    val rows = rowsRdd.filter { row => CountHelper.countNaN(row) == 0}
+  def dropNA(rowStrategy: Boolean = filterWithRowStrategy) = {
+    if(rowStrategy) {
+      dropNAWithRowStrategy
+    } else {
+      dropNAWithColumnStrategy
+    }
+  }
+  private def dropNAWithRowStrategy = {
+    val rows = rowsRdd.filter { row => CountHelper.countNaN(row) == 0 }
     fromRows(rows)
+  }
+  private def dropNAWithColumnStrategy: DF = {
+    ???
   }
 
   /**
@@ -264,27 +296,12 @@ case class DF private(val sc: SparkContext,
     keyBy(colNames, rowsRdd).groupByKey
   }
 
-  def rowsRdd = {
-    if (rowsRddCached != null) {
-      rowsRddCached
-    } else {
-      rowsRddCached = computeRows
-      rowsRddCached.setName(s"${name}").persist(defaultStorageLevel)
-    }
-  }
-
   /*
    * columns are zip'd together to get rows, expensive operation
    */
   private def computeRows: RDD[Array[Any]] = {
     ColumnZipper(this, (0 until numCols).toList)
   }
-
-  /**
-   * number of columns in df
-   * @return number of columns
-   */
-  def numCols = cols.size
 
   /*
    * augment with key, resulting RDD is a pair with k=array[any]
@@ -473,7 +490,7 @@ case class DF private(val sc: SparkContext,
       colIndexToName.put(colIndex, colName)
       that.index = colIndex
     }
-    rowsRddCached = null //invalidate cached rows
+    rowsRddCached = None //invalidate cached rows
     //FIXME: incremental computation of rows
   }
 

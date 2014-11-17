@@ -10,6 +10,7 @@ import org.apache.spark.SparkContext._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 
+import scala.collection.mutable.HashMap
 import scala.reflect.runtime.{universe => ru}
 import scala.reflect.{ClassTag, classTag}
 
@@ -27,6 +28,12 @@ object Preamble {
 class Column[+T: ru.TypeTag] private(val sc: SparkContext,
                                     var rdd: RDD[Any], /* mutates due to fillNA, markNA */
                                     var index: Int) /* mutates when an orphan column is put in a DF */ {
+  /**
+   * set names for categories
+   * FIXME: this should be somewhere else not in Column[T]
+   */
+  val catNameToNum = new HashMap[String, Short]
+  val catNumToName = new HashMap[Short, String]
 
   /**
    * count number of elements. although rdd is var not val the number of elements does not change
@@ -472,6 +479,8 @@ object Column {
       newDoubleColumn(sCtx, rdd.asInstanceOf[RDD[Double]], index)
     else if (tpe =:= ru.typeOf[Float])
       newFloatColumn(sCtx, rdd.asInstanceOf[RDD[Float]], index)
+    else if (tpe =:= ru.typeOf[Short])
+      newShortColumn(sCtx, rdd.asInstanceOf[RDD[Short]], index)
     else if (tpe =:= ru.typeOf[String])
       newStringColumn(sCtx, rdd.asInstanceOf[RDD[String]], index)
     else null
@@ -483,6 +492,10 @@ object Column {
 
   private def newFloatColumn(sCtx: SparkContext, rdd: RDD[Float], index: Int) = {
     new Column[Float](sCtx, rdd.asInstanceOf[RDD[Any]], index)
+  }
+
+  private def newShortColumn(sCtx: SparkContext, rdd: RDD[Short], index: Int) = {
+    new Column[Short](sCtx, rdd.asInstanceOf[RDD[Any]], index)
   }
 
   private def newStringColumn(sCtx: SparkContext, rdd: RDD[String], index: Int) = {

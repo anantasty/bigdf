@@ -90,7 +90,6 @@ case object StringOps {
 }
 
 class RichColumnString(self: Column[String]) {
-
   /**
    * mark a string as NA: mutates the string to empty string
    */
@@ -102,6 +101,24 @@ class RichColumnString(self: Column[String]) {
    */
   def fillNA(value: String): Unit = {
     self.rdd = self.stringRdd.map { cell => if (cell.isEmpty) value else cell}
+  }
+
+  private def addNames(idAndName: Seq[(String, Int)]): Unit = {
+    idAndName.foreach { case (name, id) =>
+      self.catNameToNum(name) = id.toShort
+      self.catNumToName(id.toShort) = name
+    }
+  }
+
+  def str2cat = {
+    val uniqNames = self.stringRdd.distinct.collect.sorted
+    val namesAndIds = uniqNames.zipWithIndex
+    addNames(namesAndIds)
+
+    val name2Id = self.catNameToNum.clone
+    val catRdd = self.stringRdd.map {  name2Id(_) }
+
+    Column(self.sc, catRdd, -1)
   }
   /**
    * compare every element in this column with a number

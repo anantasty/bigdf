@@ -244,7 +244,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
     test("NA: Dropping rows with NaN") {
         val df = makeDFWithNAs
         assert(df.numRows === 3)
-        val df2 = df.dropNA
+        val df2 = df.dropNA(rowStrategy = true)
         assert(df2.numRows === 1)
     }
 
