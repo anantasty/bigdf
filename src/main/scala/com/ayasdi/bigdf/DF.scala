@@ -138,7 +138,7 @@ case class DF private(val sc: SparkContext,
   }
 
   /**
-   * get columns by ranges of numeric indices
+   * get columns by ranges of numeric indices. invalid indices are silently ignored.
    * FIXME: solo has to be "5 to 5" for now, should be just "5"
    * @param indexRanges sequence of ranges like List(1 to 5, 13 to 15)
    */
@@ -147,7 +147,7 @@ case class DF private(val sc: SparkContext,
       indexRange <- indexRanges;
       index <- indexRange;
       if (colIndexToName(index) != null)
-    ) yield (colIndexToName(index), cols.getOrElse(colIndexToName(index), null))
+    ) yield (colIndexToName(index), cols(colIndexToName(index)))
 
     new ColumnSeq(selectedCols)
   }
@@ -157,6 +157,10 @@ case class DF private(val sc: SparkContext,
    * @param indices Sequence of indices like List(1, 3, 13)
    */
   def columnsByIndices(indices: Seq[Int]) = {
+    require(indices.forall {
+      colIndexToName.contains(_)
+    })
+
     val indexRanges = indices.map { i => i to i}
     columnsByRanges(indexRanges)
   }
@@ -199,34 +203,29 @@ case class DF private(val sc: SparkContext,
     zippedColRdd.map(cols => cond.checkWithColStrategy(cols, colMap))
   }
 
-  private def fromRows(filteredRows: RDD[Array[Any]]) = {
-    val df = new DF(sc, cols.clone, colIndexToName.clone, name + "-fromRows")
-
-    val firstRowOption = Try {
-      filteredRows.first
-    }.toOption
-    if (firstRowOption.nonEmpty) {
-      val firstRow = firstRowOption.get
-      for (i <- 0 until df.numCols) {
-        val t = DF.getType(firstRow(i))
-        val column = if (t == ru.typeOf[Double]) {
-          val colRdd = filteredRows.map { row => row(i).asInstanceOf[Double]}
-          df.cols.put(df.colIndexToName(i), Column(sc, colRdd, i))
-        } else if (t == ru.typeOf[String]) {
-          val colRdd = filteredRows.map { row => row(i).asInstanceOf[String]}
-          df.cols.put(df.colIndexToName(i), Column(sc, colRdd, i))
-        } else {
-          println(s"Could not determine type of column ${colIndexToName(i)}")
-          null
-        }
-        println(s"Column: ${df.colIndexToName(i)} \t\t\tType: ${t}")
-      }
-    } else {
-      for (i <- 0 until df.numCols) {
-        df.cols.put(df.colIndexToName(i), null)
+  private def fromRows(rows: RDD[Array[Any]]) = {
+    val newDf = new DF(sc, colIndexToName = this.colIndexToName.clone, name = this.name + "-fromRows")
+    //replace col.rdd in this df to get newDf
+    this.cols.foreach { case(colName, col) =>
+      val i = col.index
+      val colTpe = col.getType
+      if (colTpe == ru.typeOf[Double]) {
+        val colRdd = rows.map { row => row(i).asInstanceOf[Double] }
+        newDf.cols(colName) = Column(sc, colRdd, i)
+      } else if (colTpe == ru.typeOf[Float]) {
+        val colRdd = rows.map { row => row(i).asInstanceOf[Float] }
+        newDf.cols(colName) = Column(sc, colRdd, i)
+      } else if (colTpe == ru.typeOf[String]) {
+        val colRdd = rows.map { row => row(i).asInstanceOf[String] }
+        newDf.cols(colName) = Column(sc, colRdd, i)
+      } else if (colTpe == ru.typeOf[Short]) {
+        val colRdd = rows.map { row => row(i).asInstanceOf[Short] }
+        newDf.cols(colName) = Column(sc, colRdd, i)
+      } else {
+        println(s"fromRows: Unhandled type ${colTpe}")
       }
     }
-    df
+    newDf
   }
 
   /**
@@ -761,7 +760,7 @@ object DF {
    * relational-like join two DFs
    */
   def join(sc: SparkContext, left: DF, right: DF, on: String, how: JoinType.JoinType = JoinType.Inner) = {
-    val df = DF(sc, "joined")
+    val newDf = DF(sc, s"${left.name}-join-${right.name}")
     val joinedRows = joinRdd(sc, left, right, on, how)
     val firstRow = joinedRows.first
 
@@ -793,29 +792,29 @@ object DF {
       for (joinedIndex <- start until start + curDf.numCols) {
         val origIndex = joinedIndex - start
         val newColName = joinedColumnName(curDf.colIndexToName(origIndex), start)
-        val t = getType(partGetter(firstRow)(origIndex))
+        val t = curDf.cols(curDf.colIndexToName(origIndex)).getType
         if (t == ru.typeOf[Double]) {
           val colRdd = joinedRows.map { row => partGetter(row)(origIndex).asInstanceOf[Double]}
           val column = Column(curDf.sc, colRdd, joinedIndex)
-          df.cols.put(newColName, column)
+          newDf.cols.put(newColName, column)
         } else if (t == ru.typeOf[String]) {
           val colRdd = joinedRows.map { row => partGetter(row)(origIndex).asInstanceOf[String]}
           val column = Column(curDf.sc, colRdd, joinedIndex)
-          df.cols.put(newColName, column)
+          newDf.cols.put(newColName, column)
         } else {
           println(s"Could not determine type of column ${left.colIndexToName(origIndex)}")
           null
         }
         println(s"Column: ${curDf.colIndexToName(origIndex)} \t\t\tType: ${t}")
 
-        df.colIndexToName(joinedIndex) = newColName
+        newDf.colIndexToName(joinedIndex) = newColName
       }
     }
 
     addCols(left, 0, leftValue)
     addCols(right, left.numCols, rightValue)
 
-    df
+    newDf
   }
 
   /**
@@ -829,16 +828,5 @@ object DF {
     val leftWithKey = left.cols(on).rdd.zip(left.rowsRdd)
     val rightWithKey = right.cols(on).rdd.zip(right.rowsRdd)
     leftWithKey.join(rightWithKey)
-  }
-
-  def getType(elem: Any) = {
-    elem match {
-      case x: Double => ru.typeOf[Double]
-      case x: String => ru.typeOf[String]
-      case _ => {
-        println(s"PANIC: unsupported column type ${elem}")
-        null
-      }
-    }
   }
 }
