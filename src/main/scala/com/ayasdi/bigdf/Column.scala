@@ -48,6 +48,8 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   val isFloat = ru.typeOf[T] =:= ru.typeOf[Float]
   val isString = ru.typeOf[T] =:= ru.typeOf[String]
   val isShort = ru.typeOf[T] =:= ru.typeOf[Short]
+  val isArrayString = ru.typeOf[T] =:= ru.typeOf[Array[String]]
+  val isTF = ru.typeOf[T] =:= ru.typeOf[Map[String, Float]]
   val getType = ru.typeOf[T]
 
   /**
@@ -80,6 +82,16 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   def castShort= {
     require(isShort)
     this.asInstanceOf[Column[Short]]
+  }
+
+  def castArrayString = {
+    require(isArrayString)
+    this.asInstanceOf[Column[Array[String]]]
+  }
+
+  def castTF = {
+    require(isTF)
+    this.asInstanceOf[Column[Map[String, Float]]]
   }
 
   override def toString = {
@@ -185,6 +197,11 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
    * get rdd of strings to do string functions
    */
   def shortRdd = getRdd[Short]
+
+  /**
+   * get rdd of array of strings to do text analysis
+   */
+  def arrayStringRdd = getRdd[Array[String]]
 
   /**
    * get the RDD typecast to the given type
@@ -483,6 +500,10 @@ object Column {
       newShortColumn(sCtx, rdd.asInstanceOf[RDD[Short]], index)
     else if (tpe =:= ru.typeOf[String])
       newStringColumn(sCtx, rdd.asInstanceOf[RDD[String]], index)
+    else if (tpe =:= ru.typeOf[Array[String]])
+      newArrayStringColumn(sCtx, rdd.asInstanceOf[RDD[Array[String]]], index)
+    else if (tpe =:= ru.typeOf[Map[String, Float]])
+      newTFColumn(sCtx, rdd.asInstanceOf[RDD[Map[String, Float]]], index)
     else null
   }
 
@@ -500,5 +521,13 @@ object Column {
 
   private def newStringColumn(sCtx: SparkContext, rdd: RDD[String], index: Int) = {
     new Column[String](sCtx, rdd.asInstanceOf[RDD[Any]], index)
+  }
+
+  private def newArrayStringColumn(sCtx: SparkContext, rdd: RDD[Array[String]], index: Int) = {
+    new Column[Array[String]](sCtx, rdd.asInstanceOf[RDD[Any]], index)
+  }
+
+  private def newTFColumn(sCtx: SparkContext, rdd: RDD[Map[String, Float]], index: Int) = {
+    new Column[Map[String, Float]](sCtx, rdd.asInstanceOf[RDD[Any]], index)
   }
 }

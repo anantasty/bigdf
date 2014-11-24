@@ -40,7 +40,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         sc.stop
     }
 
-    private def makeDF = {
+    private[bigdf] def makeDF = {
         val h = Vector("a", "b", "c", "Date")
         val v = Vector(Vector(11.0, 12.0, 13.0),
             Vector(21.0, 22.0, 23.0),
@@ -49,7 +49,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         DF(sc, h, v)
     }
 
-    private def makeDFWithNAs = {
+    private[bigdf] def makeDFWithNAs = {
         val h = Vector("a", "b", "c", "Date")
         val v = Vector(Vector(Double.NaN, 12.0, 13.0),
             Vector("b1", "", "b3"),
@@ -58,7 +58,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         DF(sc, h, v)
     }
 
-    private def makeDFWithNulls = {
+    private[bigdf] def makeDFWithNulls = {
         val h = Vector("a", "b", "c", "Date")
         val v = Vector(Vector(-1, 12.0, 13.0),
             Vector("b1", "NULL", "b3"),
@@ -67,7 +67,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         DF(sc, h, v)
     }
     
-    private def makeDFWithString = {
+    private[bigdf] def makeDFWithString = {
         val h = Vector("a", "b", "c", "Date")
         val v = Vector(Vector("11.0", "12.0", "13.0"),
             Vector(21.0, 22.0, 23.0),
@@ -76,7 +76,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         DF(sc, h, v)
     }
 
-    private def makeDFFromCSVFile(file: String) = {
+    private[bigdf] def makeDFFromCSVFile(file: String) = {
         DF(sc, file, ',', false)
     }
 
