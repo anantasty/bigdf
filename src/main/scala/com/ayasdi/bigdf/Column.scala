@@ -204,6 +204,11 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   def arrayStringRdd = getRdd[Array[String]]
 
   /**
+   * get rdd of map from string to float for things like tfidf values of terms
+   */
+  def tfRdd = getRdd[Map[String, Float]]
+
+  /**
    * get the RDD typecast to the given type
    * @tparam R
    * @return RDD of R's. throws exception if the cast is not applicable to this column

@@ -749,8 +749,17 @@ object DF {
         cols(colName) = Column(df.sc, applyFilter(col.doubleRdd), i)
       else if (col.isString)
         cols(colName) = Column(df.sc, applyFilter(col.stringRdd), i)
+      else if(col.isFloat)
+        cols(colName) = Column(df.sc, applyFilter(col.floatRdd), i)
+      else if(col.isArrayString)
+        cols(colName) = Column(df.sc, applyFilter(col.arrayStringRdd), i)
+      else if(col.isShort)
+        cols(colName) = Column(df.sc, applyFilter(col.shortRdd), i)
+      else if(col.isTF)
+        cols(colName) = Column(df.sc, applyFilter(col.tfRdd), i)
       else
         println("Unexpected column type while column strategy filtering")
+
     }
     println(cols)
     new DF(df.sc, cols, df.colIndexToName.clone, "filtered")
