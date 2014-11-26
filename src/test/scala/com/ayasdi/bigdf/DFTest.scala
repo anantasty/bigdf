@@ -95,7 +95,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
     test("Column Index: Refer to a column of a DF") {
         val df = makeDF
         val col = df("a")
-      assert(col.isDouble)
+        assert(col.colType === ColType.Double)
         assert(col.index === 0)
         assert(col.rdd.count === 3)
     }
@@ -159,8 +159,10 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
     test("Parsing: Parse doubles") {
         val df = makeDFFromCSVFile("src/test/resources/mixedDoubles.csv")
         df.cols.foreach { col =>
-          if(col._2.isDouble) col._2.doubleRdd.collect
-          else null
+          col._2.colType match {
+            case ColType.Double => col._2.doubleRdd.collect
+            case _ => null
+          }
         }
         assert(df("Feature1").parseErrors.value === 1)
     }

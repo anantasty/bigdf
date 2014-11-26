@@ -25,6 +25,30 @@ object Preamble {
   implicit def columnAnyToRichColumnCategory(col: Column[Any]) = new RichColumnCategory(col.castShort)
 }
 
+/*
+  Instead of using the typetag we use this "Enum" to make the compiler generate a
+  warning when we add a new column type but forget to handle it somewhere
+  To get this warning pattern matching is necessary, ABSOLUTELY NO if/else for column type
+ */
+object ColType {
+  sealed trait EnumVal
+
+  case object Double extends EnumVal
+
+  case object Float extends EnumVal
+
+  case object Short extends EnumVal
+
+  case object String extends EnumVal
+
+  case object ArrayOfString extends EnumVal
+
+  case object MapOfStringToFloat extends EnumVal
+
+  case object Undefined extends EnumVal
+}
+
+
 class Column[+T: ru.TypeTag] private(val sc: SparkContext,
                                     var rdd: RDD[Any], /* mutates due to fillNA, markNA */
                                     var index: Int) /* mutates when an orphan column is put in a DF */ {
@@ -41,16 +65,28 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   lazy val count = rdd.count
   val parseErrors = sc.accumulator(0L)
 
-  /**
-   * what is the column type?
+  /*
+     what is the column type?
    */
-  val isDouble = ru.typeOf[T] =:= ru.typeOf[Double]
-  val isFloat = ru.typeOf[T] =:= ru.typeOf[Float]
-  val isString = ru.typeOf[T] =:= ru.typeOf[String]
-  val isShort = ru.typeOf[T] =:= ru.typeOf[Short]
-  val isArrayString = ru.typeOf[T] =:= ru.typeOf[Array[String]]
-  val isTF = ru.typeOf[T] =:= ru.typeOf[Map[String, Float]]
-  val getType = ru.typeOf[T]
+  val tpe = ru.typeOf[T]
+  private val isDouble = ru.typeOf[T] =:= ru.typeOf[Double]
+  private val isFloat = ru.typeOf[T] =:= ru.typeOf[Float]
+  private val isString = ru.typeOf[T] =:= ru.typeOf[String]
+  private val isShort = ru.typeOf[T] =:= ru.typeOf[Short]
+  private val isArrayOfString = ru.typeOf[T] =:= ru.typeOf[Array[String]]
+  private val isMapOfStringToFloat = ru.typeOf[T] =:= ru.typeOf[Map[String, Float]]
+
+  /*
+      use this for demux'ing in column type
+      always use pattern matching, never if/else
+   */
+  val colType: ColType.EnumVal = if(isDouble) ColType.Double
+      else if(isFloat) ColType.Float
+      else if(isShort) ColType.Short
+      else if(isString) ColType.String
+      else if(isArrayOfString) ColType.ArrayOfString
+      else if(isMapOfStringToFloat) ColType.MapOfStringToFloat
+      else ColType.Undefined
 
   /**
    * Spark uses ClassTag but bigdf uses the more functional TypeTag. This method compares the two.
@@ -61,6 +97,10 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
     if (isDouble) classTag[C] == classTag[Double]
     else if (isFloat) classTag[C] == classTag[Double]
     else if (isString) classTag[C] == classTag[String]
+    else if (isShort) classTag[C] == classTag[Short]
+    else if (isArrayOfString) classTag[C] == classTag[Array[String]]
+    else if (isFloat) classTag[C] == classTag[Float]
+    else if (isMapOfStringToFloat) classTag[C] == classTag[Map[String, Float]]
     else false
   }
 
@@ -84,18 +124,18 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
     this.asInstanceOf[Column[Short]]
   }
 
-  def castArrayString = {
-    require(isArrayString)
+  def castArrayOfString = {
+    require(isArrayOfString)
     this.asInstanceOf[Column[Array[String]]]
   }
 
-  def castTF = {
-    require(isTF)
+  def castMapStringToFloat = {
+    require(isMapOfStringToFloat)
     this.asInstanceOf[Column[Map[String, Float]]]
   }
 
   override def toString = {
-    s"rdd: ${rdd.name} index: $index type: $getType"
+    s"rdd: ${rdd.name} index: $index type: $colType"
   }
 
   /**
@@ -104,36 +144,36 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   def describe(): Unit = {
     import com.ayasdi.bigdf.Preamble._
     val c = if (rdd != null) count else 0
-    println(s"\ttype:${getType}\n\tcount:${c}\n\tparseErrors:${parseErrors}")
+    println(s"\ttype:${colType}\n\tcount:${c}\n\tparseErrors:${parseErrors}")
     if(isDouble) castDouble.printStats
   }
-
 
   /**
    * print upto max(default 10) elements
    */
   def list(max: Int = 10): Unit = {
     println("Count: $count")
-    if (isDouble) {
-      if (count <= max)
-        doubleRdd.collect.foreach {
-          println _
+    colType match {
+      case ColType.Double => {
+        if (count <= max)
+          doubleRdd.collect.foreach { println _ }
+        else
+          doubleRdd.take(max).foreach { println _ }
+      }
+      case ColType.String => {
+        {
+          if (count <= max)
+            stringRdd.collect.foreach { println _ }
+          else
+            stringRdd.take(max).foreach { println _ }
         }
-      else
-        doubleRdd.take(max).foreach {
-          println _
-        }
-    } else if (isString) {
-      if (count <= max)
-        stringRdd.collect.foreach {
-          println _
-        }
-      else
-        stringRdd.take(max).foreach {
-          println _
-        }
-    } else {
-      println("Wrong type!")
+      }
+      case _ => {
+        if (count <= max)
+          rdd.collect.foreach { println _ }
+        else
+          rdd.take(max).foreach { println _ }
+      }
     }
   }
 
@@ -155,36 +195,26 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
    * count the number of NAs
    */
   def countNA = {
-    if (isDouble) {
-      doubleRdd.filter {
-        _.isNaN
-      }.count
-    } else if (isFloat) {
-      floatRdd.filter {
-        _.isNaN
-      }.count
-    } else if(isString) {
-      stringRdd.filter {
-        _.isEmpty
-      }.count
-    } else if(isShort) {
-      shortRdd.filter {
-        _ == RichColumnCategory.CATEGORY_NA
-      }.count
-    } else {
-      println(s"ERROR: wrong column type ${getType}")
-      0L
+    colType match {
+      case ColType.Double => doubleRdd.filter { _.isNaN }.count
+      case ColType.Float => floatRdd.filter { _.isNaN }.count
+      case ColType.Short => shortRdd.filter {  _ == RichColumnCategory.CATEGORY_NA }.count //short is used for categories
+      case ColType.String => stringRdd.filter { _.isEmpty }.count
+      case _ => {
+        println(s"WARNING: No NA defined for column type ${colType}")
+        0L
+      }
     }
   }
 
 
   /**
-   * get rdd of doubles to use doublerddfunctions
+   * get rdd of doubles to use doublerddfunctions etc
    */
   def doubleRdd = getRdd[Double]
 
   /**
-   * get rdd of doubles to use doublerddfunctions
+   * get rdd of floats
    */
   def floatRdd = getRdd[Float]
 
@@ -194,19 +224,19 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   def stringRdd = getRdd[String]
 
   /**
-   * get rdd of strings to do string functions
+   * get rdd of shorts
    */
   def shortRdd = getRdd[Short]
 
   /**
    * get rdd of array of strings to do text analysis
    */
-  def arrayStringRdd = getRdd[Array[String]]
+  def arrayOfStringRdd = getRdd[Array[String]]
 
   /**
    * get rdd of map from string to float for things like tfidf values of terms
    */
-  def tfRdd = getRdd[Map[String, Float]]
+  def mapOfStringToFloatRdd = getRdd[Map[String, Float]]
 
   /**
    * get the RDD typecast to the given type
@@ -496,43 +526,8 @@ object Column {
    * create Column from existing RDD
    */
   def apply[T: ru.TypeTag](sCtx: SparkContext, rdd: RDD[T], index: Int = -1) = {
-    val tpe = ru.typeOf[T]
-    if (tpe =:= ru.typeOf[Double])
-      newDoubleColumn(sCtx, rdd.asInstanceOf[RDD[Double]], index)
-    else if (tpe =:= ru.typeOf[Float])
-      newFloatColumn(sCtx, rdd.asInstanceOf[RDD[Float]], index)
-    else if (tpe =:= ru.typeOf[Short])
-      newShortColumn(sCtx, rdd.asInstanceOf[RDD[Short]], index)
-    else if (tpe =:= ru.typeOf[String])
-      newStringColumn(sCtx, rdd.asInstanceOf[RDD[String]], index)
-    else if (tpe =:= ru.typeOf[Array[String]])
-      newArrayStringColumn(sCtx, rdd.asInstanceOf[RDD[Array[String]]], index)
-    else if (tpe =:= ru.typeOf[Map[String, Float]])
-      newTFColumn(sCtx, rdd.asInstanceOf[RDD[Map[String, Float]]], index)
-    else null
+    new Column[T](sCtx, rdd.asInstanceOf[RDD[Any]], index)
   }
 
-  private def newDoubleColumn(sCtx: SparkContext, rdd: RDD[Double], index: Int) = {
-    new Column[Double](sCtx, rdd.asInstanceOf[RDD[Any]], index)
-  }
 
-  private def newFloatColumn(sCtx: SparkContext, rdd: RDD[Float], index: Int) = {
-    new Column[Float](sCtx, rdd.asInstanceOf[RDD[Any]], index)
-  }
-
-  private def newShortColumn(sCtx: SparkContext, rdd: RDD[Short], index: Int) = {
-    new Column[Short](sCtx, rdd.asInstanceOf[RDD[Any]], index)
-  }
-
-  private def newStringColumn(sCtx: SparkContext, rdd: RDD[String], index: Int) = {
-    new Column[String](sCtx, rdd.asInstanceOf[RDD[Any]], index)
-  }
-
-  private def newArrayStringColumn(sCtx: SparkContext, rdd: RDD[Array[String]], index: Int) = {
-    new Column[Array[String]](sCtx, rdd.asInstanceOf[RDD[Any]], index)
-  }
-
-  private def newTFColumn(sCtx: SparkContext, rdd: RDD[Map[String, Float]], index: Int) = {
-    new Column[Map[String, Float]](sCtx, rdd.asInstanceOf[RDD[Any]], index)
-  }
 }
