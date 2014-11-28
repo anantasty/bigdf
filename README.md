@@ -1,10 +1,10 @@
-# What is this?
+### Introduction
 DataFrames are useful constructs for data scientists, popularized by [R] and [pandas].
 
 [pandas]:http://pandas.pydata.org/pandas-docs/stable/generated/pandas.DataFrame.html
 [R]:http://www.r-tutor.com/r-introduction/data-frame
 [https://github.com/AyasdiOpenSource/spark]:https://github.com/AyasdiOpenSource/spark
-Implementations of these packages are not natively distributed - their DataFrames struggle with big data. bigdf is a dataframe on top of Apache Spark. It is written as an internal Scala DSL with the look and feel of Pandas to make it usable for those familiar with Pandas to use it.
+Implementations of these packages are not natively distributed - their DataFrames struggle with big data. bigdf is a dataframe on top of Apache Spark. It is written as an internal Scala DSL with the look and feel of Pandas to make it easy for those familiar with Pandas to use it.
 
 A gentle introduction is available at:
 > http://www.slideshare.net/codeninja4086/df-38948475?utm_source=slideshow03&utm_medium=ssemail&utm_campaign=iupload_share_slideshow
@@ -48,7 +48,7 @@ $ cd bigdf
 $ sbt update
 $ sbt package
 $ sbt assembly
-$ sbt test
+$ sbt test #this might fail, but will pass from eclipse and intellij
 ```
 - Start a shell and begin playing.
 ```sh
