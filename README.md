@@ -57,3 +57,52 @@ $ ./spark/bin/spark-shell --jars ./bigdf/target/scala-2.10/bigdf_xxxx.jar
 ```
 - https://github.com/AyasdiOpenSource/bigdf/wiki/ for examples
 - Look at DFTest.scala for usage [a simple example is shown below]
+
+### Use with ipython notebook
+```sh
+$cd $REPOS
+$git clone git@github.com:mattpap/IScala.git
+$cd IScala
+$sbt
+>++ 2.10.4
+>assembly
+>^D
+```
+
+```sh
+$ipython profile create scala
+```
+Add the following line to the three files ~/.ipython/profile_scala/ipython*_config.py
+
+```sh
+c.KernelManager.kernel_cmd = ["java", "-jar", "$ISCALA_PATH/lib/IScala.jar", "--connection-file", "{connection_file}", "--parent"]"
+```
+
+To start notebook
+```sh
+$cd <my notebooks directory>
+$ipython notebook --profile scala
+```
+
+To install spark and bigdf to your local mvn repos
+```sh
+$mvn install:install-file -Dfile=$REPOS/bigdf-transforms/lib/spark-assembly-1.2.0-SNAPSHOT-hadoop1.0.4.jar -DgroupId=org.apache -DartifactId=spark-assembly_2.10 -Dversion=1.2.0-SNAPSHOT-hadoop1.0.4 -Dpackaging=jar
+$ mvn install:install-file -Dfile=$REPOS/bigdf-transforms/bigdf/target/scala-2.10/bigdf-assembly-0.2.jar -DgroupId=com.ayasdi -DartifactId=bigdf-assembly_2.10 -Dversion=0.2 -Dpackaging=jar
+```
+
+To start using bigdf in a notebook
+```sh
+%libraryDependencies += "org.apache" %% "spark-assembly" % "1.2.0-SNAPSHOT-hadoop1.0.4"
+%libraryDependencies += "com.ayasdi" %% "bigdf-assembly" % "0.2"
+%resolvers += "Local Maven Repository" at "file:///Users/mohit/.m2/repository"
+%update
+```
+
+```sh
+import org.apache.spark.SparkContext
+import org.apache.spark.SparkContext._
+import com.ayasdi.bigdf._
+
+val sc = new SparkContext("local[*]", "bigdf-intro")
+val df = DF(sc, "/Users/mohit/Downloads/faredata2013/trip_fare_1.csv", ',', true)
+```
