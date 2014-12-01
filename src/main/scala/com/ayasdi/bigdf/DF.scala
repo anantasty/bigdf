@@ -44,8 +44,8 @@ case class DF private(val sc: SparkContext,
    * number of rows in df
    * @return number of rows
    */
-  lazy val numRows = {
-    require(numCols > 0)
+  lazy val rowCount = {
+    require(columnCount > 0)
     cols.head._2.rdd.count
   }
 
@@ -53,7 +53,7 @@ case class DF private(val sc: SparkContext,
    * number of columns in df
    * @return number of columns
    */
-  def numCols = cols.size
+  def columnCount = cols.size
 
   /**
    * for large number of columns, column based filtering is faster. it is the default.
@@ -75,8 +75,8 @@ case class DF private(val sc: SparkContext,
     rowsRddCached.get
   }
 
-  def colNames = {
-    (0 until numCols).map { colIndex => colIndexToName(colIndex)}.toArray
+  def columnNames = {
+    (0 until columnCount).map { colIndex => colIndexToName(colIndex)}.toArray
   }
 
   override def toString() = {
@@ -97,6 +97,15 @@ case class DF private(val sc: SparkContext,
    * @param colName name of the column
    */
   def apply(colName: String) = column(colName)
+
+  /**
+   * get a column with given index
+   * @param index column index
+   * @return
+   */
+  def apply(index: Int): Column[Any] = {
+    cols(colIndexToName(index))
+  }
 
   /**
    * get multiple columns by name, indices or index ranges
@@ -319,7 +328,7 @@ case class DF private(val sc: SparkContext,
    * columns are zip'd together to get rows, expensive operation
    */
   private def computeRows: RDD[Array[Any]] = {
-    ColumnZipper(this, (0 until numCols).toList)
+    ColumnZipper(this, (0 until columnCount).toList)
   }
 
   /*
@@ -370,37 +379,37 @@ case class DF private(val sc: SparkContext,
           val col1 = aggedRdd.map { case (k, v) =>
             k(j).asInstanceOf[Double]
           }
-          newDf.update(aggdByCol, Column(sc, col1, newDf.numCols))
+          newDf.update(aggdByCol, Column(sc, col1, newDf.columnCount))
         }
         case ColType.Float => {
           val col1 = aggedRdd.map { case (k, v) =>
             k(j).asInstanceOf[Float]
           }
-          newDf.update(aggdByCol, Column(sc, col1, newDf.numCols))
+          newDf.update(aggdByCol, Column(sc, col1, newDf.columnCount))
         }
         case ColType.Short => {
           val col1 = aggedRdd.map { case (k, v) =>
             k(j).asInstanceOf[Short]
           }
-          newDf.update(aggdByCol, Column(sc, col1, newDf.numCols))
+          newDf.update(aggdByCol, Column(sc, col1, newDf.columnCount))
         }
         case ColType.String => {
           val col1 = aggedRdd.map { case (k, v) =>
             k(j).asInstanceOf[String]
           }
-          newDf.update(aggdByCol, Column(sc, col1, newDf.numCols))
+          newDf.update(aggdByCol, Column(sc, col1, newDf.columnCount))
         }
         case ColType.ArrayOfString => {
           val col1 = aggedRdd.map { case (k, v) =>
             k(j).asInstanceOf[Array[String]]
           }
-          newDf.update(aggdByCol, Column(sc, col1, newDf.numCols))
+          newDf.update(aggdByCol, Column(sc, col1, newDf.columnCount))
         }
         case ColType.MapOfStringToFloat => {
           val col1 = aggedRdd.map { case (k, v) =>
             k(j).asInstanceOf[Map[String, Float]]
           }
-          newDf.update(aggdByCol, Column(sc, col1, newDf.numCols))
+          newDf.update(aggdByCol, Column(sc, col1, newDf.columnCount))
         }
         case ColType.Undefined => {
           println(s"ERROR: Undefined column type while aggregating ${aggdByCol}")
@@ -420,7 +429,7 @@ case class DF private(val sc: SparkContext,
       val col1 = aggedRdd.map { case (k, v) =>
         aggtor.finalize(v)
       }.asInstanceOf[RDD[String]]
-      newDf.update(aggdCol, Column(sc, col1, newDf.numCols))
+      newDf.update(aggdCol, Column(sc, col1, newDf.columnCount))
     } else {
       println("ERROR: aggregate value type" + wtpe)
     }
@@ -575,13 +584,13 @@ case class DF private(val sc: SparkContext,
    * print upto 10 x 10 elements of the dataframe
    */
   def list {
-    println(s"Dimensions: $numRows x $numCols")
-    val someRows = if (numRows <= 10) rowsRdd.collect else rowsRdd.take(10)
+    println(s"Dimensions: $rowCount x $columnCount")
+    val someRows = if (rowCount <= 10) rowsRdd.collect else rowsRdd.take(10)
     def printRow(row: Array[Any]) {
       val someCols = if (row.length <= 10) row else row.take(10)
       println(someCols.mkString("\t"))
     }
-    printRow((0 until numCols).map {
+    printRow((0 until columnCount).map {
       colIndexToName(_)
     }.toArray)
     someRows.foreach {
@@ -622,6 +631,7 @@ object DF {
   /**
    * create DF from a text file with given separator
    * first line of file is a header
+   * For CSV/TSV files only numeric(for now only Double) and String data types are supported
    */
   def apply(sc: SparkContext, inFile: String, separator: Char, fasterGuess: Boolean): DF = {
     val df: DF = DF(sc, "inFile")
@@ -643,7 +653,7 @@ object DF {
      * however, this is slow because spark will cause all data to be
      * materialized before it can be sampled
      */
-    def guessType2(col: RDD[String]) = {
+    def guessTypeByRandomSampling(col: RDD[String]) = {
       val samples = col.sample(false, 0.01, (new Random).nextLong)
         .union(sc.parallelize(List(col.first)))
       val parseFailCount = samples.filter { str =>
@@ -658,11 +668,10 @@ object DF {
         ru.typeOf[Double]
     }
     /*
-     * guess the type of a column by looking at a random sample
-     * however, this is slow because spark will cause all data to be
-     * materialized before it can be sampled
+     * guess the type of a column by looking at the firt few rows (for now 5)
+     * only materializes the first few rows of first partition, hence faster
      */
-    def guessType3(col: RDD[String]) = {
+    def guessTypeByFirstFew(col: RDD[String]) = {
       val samples = col.take(5)
       val parseFailCount = samples.filter { str =>
         Try {
@@ -697,9 +706,9 @@ object DF {
 
     val rows = dataLines.map {
       CSVParser.parse(_, csvFormat).iterator.next
-    }
-      .persist(df.defaultStorageLevel).setName(s"csvRecord/$inFile")
-    val columns = for (i <- 0 until df.numCols) yield {
+    }.persist(df.defaultStorageLevel).setName(s"csvRecord/$inFile")
+
+    val columns = for (i <- 0 until df.columnCount) yield {
       rows.map {
         _.get(i)
       }.persist(df.defaultStorageLevel)
@@ -707,7 +716,7 @@ object DF {
 
     var i = 0
     columns.foreach { col =>
-      val t = if (fasterGuess) guessType3(columns(i)) else guessType(columns(i))
+      val t = if (fasterGuess) guessTypeByFirstFew(columns(i)) else guessType(columns(i))
       col.setName(s"$t/$inFile/${df.colIndexToName(i)}")
       println(s"Column: ${df.colIndexToName(i)} \t\t\tGuessed Type: ${t}")
       if (t == ru.typeOf[Double]) {
@@ -790,7 +799,7 @@ object DF {
    */
   def apply(df: DF, filtration: RDD[Boolean]) = {
     val cols = df.cols.clone
-    for (i <- 0 until df.numCols) {
+    for (i <- 0 until df.columnCount) {
       def applyFilter[T: ClassTag](in: RDD[T]) = {
         in.zip(filtration).filter {
           _._2 == true
@@ -808,6 +817,7 @@ object DF {
         case ColType.String =>  cols(colName) = Column(df.sc, applyFilter(col.stringRdd), i)
         case ColType.ArrayOfString => cols(colName) = Column(df.sc, applyFilter(col.arrayOfStringRdd), i)
         case ColType.MapOfStringToFloat => cols(colName) = Column(df.sc, applyFilter(col.mapOfStringToFloatRdd), i)
+        case ColType.Undefined => println(s"ERROR: Undefined column type for $colName")
       }
     }
     println(cols)
@@ -847,54 +857,49 @@ object DF {
      * start = 0 for left, start = left.numCols for right
      */
     def addCols(curDf: DF, start: Int, partGetter: ((Any, (Array[Any], Array[Any]))) => Array[Any]) = {
-      for (joinedIndex <- start until start + curDf.numCols) {
+      for (joinedIndex <- start until start + curDf.columnCount) {
         val origIndex = joinedIndex - start
         val newColName = joinedColumnName(curDf.colIndexToName(origIndex), start)
-        val t = curDf.cols(curDf.colIndexToName(origIndex)).colType
-        t match {
+
+        val column = curDf(origIndex).colType match {
           case ColType.Double => {
             val colRdd = joinedRows.map { row => partGetter(row)(origIndex).asInstanceOf[Double] }
-            val column = Column(curDf.sc, colRdd, joinedIndex)
-            newDf.cols.put(newColName, column)
+            Column(curDf.sc, colRdd, joinedIndex)
           }
           case ColType.Float => {
             val colRdd = joinedRows.map { row => partGetter(row)(origIndex).asInstanceOf[Float] }
-            val column = Column(curDf.sc, colRdd, joinedIndex)
-            newDf.cols.put(newColName, column)
+            Column(curDf.sc, colRdd, joinedIndex)
           }
           case ColType.String => {
             val colRdd = joinedRows.map { row => partGetter(row)(origIndex).asInstanceOf[String] }
-            val column = Column(curDf.sc, colRdd, joinedIndex)
-            newDf.cols.put(newColName, column)
+            Column(curDf.sc, colRdd, joinedIndex)
           }
           case ColType.ArrayOfString => {
             val colRdd = joinedRows.map { row => partGetter(row)(origIndex).asInstanceOf[Array[String]]}
-            val column = Column(curDf.sc, colRdd, joinedIndex)
-            newDf.cols.put(newColName, column)
+            Column(curDf.sc, colRdd, joinedIndex)
           }
           case ColType.Short => {
             val colRdd = joinedRows.map { row => partGetter(row)(origIndex).asInstanceOf[Short]}
-            val column = Column(curDf.sc, colRdd, joinedIndex)
-            newDf.cols.put(newColName, column)
+            Column(curDf.sc, colRdd, joinedIndex)
           }
           case ColType.MapOfStringToFloat => {
             val colRdd = joinedRows.map { row => partGetter(row)(origIndex).asInstanceOf[Map[String, Float]]}
-            val column = Column(curDf.sc, colRdd, joinedIndex)
-            newDf.cols.put(newColName, column)
+            Column(curDf.sc, colRdd, joinedIndex)
           }
           case ColType.Undefined => {
             println(s"ERROR: Column type UNKNOWN for ${newColName}")
+            assert(false)
+            null
           }
         }
 
-        println(s"Column: ${curDf.colIndexToName(origIndex)} \t\t\tType: ${t}")
-
+        newDf.cols.put(newColName, column)
         newDf.colIndexToName(joinedIndex) = newColName
       }
     }
 
     addCols(left, 0, leftValue)
-    addCols(right, left.numCols, rightValue)
+    addCols(right, left.columnCount, rightValue)
 
     newDf
   }

@@ -82,27 +82,29 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
 
     test("Construct: DF from Vector") {
         val df = makeDF
-        assert(df.numCols === 4)
-        assert(df.numRows === 3)
+        assert(df.columnCount === 4)
+        assert(df.rowCount === 3)
     }
 
     test("Construct: DF from CSV file") {
         val df = makeDFFromCSVFile("src/test/resources/pivot.csv")
-        assert(df.numCols === 4)
-        assert(df.numRows === 4)
+        assert(df.columnCount === 4)
+        assert(df.rowCount === 4)
     }
 
     test("Column Index: Refer to a column of a DF") {
         val df = makeDF
-        val col = df("a")
-        assert(col.colType === ColType.Double)
-        assert(col.index === 0)
-        assert(col.rdd.count === 3)
+        val colA = df("a")
+        assert(colA.colType === ColType.Double)
+        assert(colA.index === 0)
+        assert(colA.rdd.count === 3)
+        val col0 = df(0)
+        assert((col0 eq colA) === true)
     }
 
     test("Array of column names") {
       val df = makeDF
-      assert(df.colNames ===  Array("a", "b", "c", "Date"))
+      assert(df.columnNames ===  Array("a", "b", "c", "Date"))
     }
 
     test("Column Index: Refer to non-existent column of a DF") {
@@ -130,9 +132,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
 
     test("Column Index: Slices") {
         val df = makeDF
-        val colSeq1 = df(0)
-        assert(colSeq1.cols.length === 1)
-        assert((colSeq1.cols(0)._2 eq df("a")) === true)
+
         val colSeq2 = df(0 to 0, 1 to 3)
         assert(colSeq2.cols.length === 4)
         assert((colSeq2.cols(0)._2 eq df("a")) === true)
@@ -169,11 +169,11 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
 
     test("Double to Categorical") {
         val df = makeDF
-        val nCols = df.numCols
+        val nCols = df.columnCount
         df("cat_a") = df("a").asCategorical
         df("cat_a").shortRdd.collect
         assert(df("cat_a").parseErrors.value === 0)
-        assert(df.numCols === nCols + 1)
+        assert(df.columnCount === nCols + 1)
     }
 
     test("Double to Categorical: errors") {
@@ -186,55 +186,55 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
     test("Filter/Select: Double Column comparisons with Scalar") {
         val df = makeDF
         val dfEq12 = df(df("a") == 12)
-        assert(dfEq12.numRows === 1)
+        assert(dfEq12.rowCount === 1)
         val dfNe12 = df(df("a") != 12.0)
-        assert(dfNe12.numRows === 2)
+        assert(dfNe12.rowCount === 2)
         val dfGt12 = df(df("a") > 12)
-        assert(dfGt12.numRows === 1)
+        assert(dfGt12.rowCount === 1)
         val dfGtEq12 = df(df("a") >= 12)
-        assert(dfGtEq12.numRows === 2)
+        assert(dfGtEq12.rowCount === 2)
         val dfLt12 = df(df("a") < 12)
-        assert(dfLt12.numRows === 1)
+        assert(dfLt12.rowCount === 1)
         val dfLtEq12 = df(df("a") <= 12)
-        assert(dfLtEq12.numRows === 2)
+        assert(dfLtEq12.rowCount === 2)
     }
 
     test("Filter/Select: Double Column comparisons with Scalar, no match") {
         val df = makeDF
         val dfGt13 = df(df("a") == 133)
-        assert(dfGt13.numRows === 0)
+        assert(dfGt13.rowCount === 0)
     }
 
     test("Filter/Select: String Column comparisons with Scalar") {
         val df = makeDFWithString
         val dfEq12 = df(df("a") == "12.0")
-        assert(dfEq12.numRows === 1)
+        assert(dfEq12.rowCount === 1)
         val dfGt12 = df(df("a") == "12.0")
-        assert(dfGt12.numRows === 1)
+        assert(dfGt12.rowCount === 1)
         val dfGtEq12 = df(df("a") >= "12.0")
-        assert(dfGtEq12.numRows === 2)
+        assert(dfGtEq12.rowCount === 2)
         val dfLt12 = df(df("a") < "12.0")
-        assert(dfLt12.numRows === 1)
+        assert(dfLt12.rowCount === 1)
         val dfLtEq12 = df(df("a") <= "12.0")
-        assert(dfLtEq12.numRows === 2)
+        assert(dfLtEq12.rowCount === 2)
     }
 
     test("Filter/Select: String Column comparisons with Scalar, no match") {
         val df = makeDFWithString
         val dfGt13 = df(df("a") > "13.0")
-        assert(dfGt13.numRows === 0)
+        assert(dfGt13.rowCount === 0)
     }
 
     test("Filter/Select: Logical combinations of predicates") {
         val df = makeDF
         val dfAeq12AndBeq22 = df(df("a") == 12.0 && df("b") == 22)
-        assert(dfAeq12AndBeq22.numRows === 1)
+        assert(dfAeq12AndBeq22.rowCount === 1)
         val dfAeq12OrBeq23 = df(df("a") == 12 || df("b") == 23)
-        assert(dfAeq12OrBeq23.numRows === 2)
+        assert(dfAeq12OrBeq23.rowCount === 2)
         val dfNotAeq12 = df(!(df("a") == 12))
-        assert(dfNotAeq12.numRows === 2)
+        assert(dfNotAeq12.rowCount === 2)
         val dfAeq12XorBeq23 = df(df("a") == 12 ^^ df("b") == 23)
-        assert(dfAeq12XorBeq23.numRows === 2)
+        assert(dfAeq12XorBeq23.rowCount === 2)
     }
 
     test("NA: Counting NaNs") {
@@ -245,9 +245,9 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
 
     test("NA: Dropping rows with NaN") {
         val df = makeDFWithNAs
-        assert(df.numRows === 3)
+        assert(df.rowCount === 3)
         val df2 = df.dropNA(rowStrategy = true)
-        assert(df2.numRows === 1)
+        assert(df2.rowCount === 1)
     }
 
     test("NA: Replacing NA with something else") {
@@ -328,8 +328,8 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
     test ("Aggregate multi") {
       val df = makeDFFromCSVFile("src/test/resources/aggregate.csv")
       val sumOfFeature1 = df.aggregate(List("Month", "Customer"), List("Feature1"), AggSimple)
-      assert(sumOfFeature1.numCols === 3)
-      assert(sumOfFeature1.numRows === 4)
+      assert(sumOfFeature1.columnCount === 3)
+      assert(sumOfFeature1.rowCount === 4)
     }
 
     test ("Aggregate string") {
@@ -345,8 +345,8 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
         val df2 = df.pivot("Customer", "Period")
         df2.describe
         df2.list
-        assert(df2.numRows === 3)
-        assert(df2.numCols === 6)
+        assert(df2.rowCount === 3)
+        assert(df2.columnCount === 6)
         val df3 = df2("S_Customer@Period==2.0").stringRdd.zip(df2("S_Customer@Period==1.0").stringRdd)
         val bad = sc.accumulator(0)
         df3.foreach { case (a, b) => 
