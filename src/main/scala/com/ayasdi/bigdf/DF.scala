@@ -244,6 +244,11 @@ case class DF private(val sc: SparkContext,
           newDf.cols(colName) = Column(sc, colRdd, i)
         }
 
+        case ColType.ArrayOfDouble => {
+          val colRdd = rows.map { row => row(i).asInstanceOf[Array[Double]] }
+          newDf.cols(colName) = Column(sc, colRdd, i)
+        }
+
         case ColType.MapOfStringToFloat => {
           val colRdd = rows.map { row => row(i).asInstanceOf[Map[String, Float]] }
           newDf.cols(colName) = Column(sc, colRdd, i)
@@ -402,6 +407,12 @@ case class DF private(val sc: SparkContext,
         case ColType.ArrayOfString => {
           val col1 = aggedRdd.map { case (k, v) =>
             k(j).asInstanceOf[Array[String]]
+          }
+          newDf.update(aggdByCol, Column(sc, col1, newDf.columnCount))
+        }
+        case ColType.ArrayOfDouble => {
+          val col1 = aggedRdd.map { case (k, v) =>
+            k(j).asInstanceOf[Array[Double]]
           }
           newDf.update(aggdByCol, Column(sc, col1, newDf.columnCount))
         }
@@ -816,8 +827,9 @@ object DF {
         case ColType.Short =>  cols(colName) = Column(df.sc, applyFilter(col.shortRdd), i)
         case ColType.String =>  cols(colName) = Column(df.sc, applyFilter(col.stringRdd), i)
         case ColType.ArrayOfString => cols(colName) = Column(df.sc, applyFilter(col.arrayOfStringRdd), i)
+        case ColType.ArrayOfDouble => cols(colName) = Column(df.sc, applyFilter(col.arrayOfDoubleRdd), i)
         case ColType.MapOfStringToFloat => cols(colName) = Column(df.sc, applyFilter(col.mapOfStringToFloatRdd), i)
-        case ColType.Undefined => println(s"ERROR: Undefined column type for $colName")
+        case ColType.Undefined =>  println(s"ERROR: Column type UNKNOWN for ${colName}")
       }
     }
     println(cols)
@@ -876,6 +888,10 @@ object DF {
           }
           case ColType.ArrayOfString => {
             val colRdd = joinedRows.map { row => partGetter(row)(origIndex).asInstanceOf[Array[String]]}
+            Column(curDf.sc, colRdd, joinedIndex)
+          }
+          case ColType.ArrayOfDouble => {
+            val colRdd = joinedRows.map { row => partGetter(row)(origIndex).asInstanceOf[Array[Double]]}
             Column(curDf.sc, colRdd, joinedIndex)
           }
           case ColType.Short => {

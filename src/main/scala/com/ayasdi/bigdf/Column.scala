@@ -43,6 +43,8 @@ object ColType {
 
   case object ArrayOfString extends EnumVal
 
+  case object ArrayOfDouble extends EnumVal
+
   case object MapOfStringToFloat extends EnumVal
 
   case object Undefined extends EnumVal
@@ -232,6 +234,11 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
    * get rdd of array of strings to do text analysis
    */
   def arrayOfStringRdd = getRdd[Array[String]]
+
+  /**
+   * get rdd of array of doubles
+   */
+  def arrayOfDoubleRdd = getRdd[Array[Double]]
 
   /**
    * get rdd of map from string to float for things like tfidf values of terms
