@@ -15,6 +15,7 @@ import scala.reflect.runtime.{universe => ru}
 import scala.reflect.{ClassTag, classTag}
 
 object Preamble {
+  import scala.language.implicitConversions
   implicit def columnDoubleToRichColumnDouble(col: Column[Double]) = new RichColumnDouble(col)
   implicit def columnAnyToRichColumnDouble(col: Column[Any]) = new RichColumnDouble(col.castDouble)
 
