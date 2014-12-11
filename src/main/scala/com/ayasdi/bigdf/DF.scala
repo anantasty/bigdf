@@ -638,11 +638,24 @@ case class DF private(val sc: SparkContext,
 }
 
 object DF {
+  /**
+   * create DF from a text file with given separator
+   * first line of file is a header
+   * For CSV/TSV files only numeric(for now only Double) and String data types are supported
+   * @param inFile Full path to the input CSV/TSV file. If running on cluster, it should be accessible on all nodes
+   * @param separator The field separator e.g. ',' for CSV file
+   */
+  def apply(inFile: String, separator: Char, fasterGuess: Boolean)(implicit sc: SparkContext): DF =
+    apply(sc, inFile, separator, fasterGuess)
 
   /**
    * create DF from a text file with given separator
    * first line of file is a header
    * For CSV/TSV files only numeric(for now only Double) and String data types are supported
+   * @param sc The spark context
+   * @param inFile Full path to the input CSV/TSV file. If running on cluster, it should be accessible on all nodes
+   * @param separator The field separator e.g. ',' for CSV file
+   * @param fasterGuess Just use true unless you are having trouble
    */
   def apply(sc: SparkContext, inFile: String, separator: Char, fasterGuess: Boolean): DF = {
     val df: DF = DF(sc, "inFile")

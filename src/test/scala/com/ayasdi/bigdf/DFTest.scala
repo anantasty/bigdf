@@ -17,7 +17,7 @@ import scala.collection.TraversableOnce.MonadOps
 import Preamble._
 
 class DFTest extends FunSuite with BeforeAndAfterAll {
-    var sc: SparkContext = _
+    implicit var sc: SparkContext = _
     val file: String = "/tmp/test_abcd.csv"
 
     def fileCleanup: Unit = {
@@ -77,7 +77,7 @@ class DFTest extends FunSuite with BeforeAndAfterAll {
     }
 
     private[bigdf] def makeDFFromCSVFile(file: String) = {
-        DF(sc, file, ',', false)
+        DF(file, ',', false)
     }
 
     test("Construct: DF from Vector") {
