@@ -77,6 +77,7 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
   private val isString = ru.typeOf[T] =:= ru.typeOf[String]
   private val isShort = ru.typeOf[T] =:= ru.typeOf[Short]
   private val isArrayOfString = ru.typeOf[T] =:= ru.typeOf[Array[String]]
+  private val isArrayOfDouble = ru.typeOf[T] =:= ru.typeOf[Array[Double]]
   private val isMapOfStringToFloat = ru.typeOf[T] =:= ru.typeOf[Map[String, Float]]
 
   /*
@@ -89,6 +90,7 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
       else if(isString) ColType.String
       else if(isArrayOfString) ColType.ArrayOfString
       else if(isMapOfStringToFloat) ColType.MapOfStringToFloat
+      else if(isArrayOfDouble) ColType.ArrayOfDouble
       else ColType.Undefined
 
   /**
