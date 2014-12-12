@@ -72,13 +72,13 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
      what is the column type?
    */
   val tpe = ru.typeOf[T]
-  private val isDouble = ru.typeOf[T] =:= ru.typeOf[Double]
-  private val isFloat = ru.typeOf[T] =:= ru.typeOf[Float]
-  private val isString = ru.typeOf[T] =:= ru.typeOf[String]
-  private val isShort = ru.typeOf[T] =:= ru.typeOf[Short]
-  private val isArrayOfString = ru.typeOf[T] =:= ru.typeOf[Array[String]]
-  private val isArrayOfDouble = ru.typeOf[T] =:= ru.typeOf[Array[Double]]
-  private val isMapOfStringToFloat = ru.typeOf[T] =:= ru.typeOf[Map[String, Float]]
+  private val isDouble = tpe =:= ru.typeOf[Double]
+  private val isFloat = tpe =:= ru.typeOf[Float]
+  private val isString = tpe =:= ru.typeOf[String]
+  private val isShort = tpe =:= ru.typeOf[Short]
+  private val isArrayOfString = tpe =:= ru.typeOf[Array[String]]
+  private val isArrayOfDouble = tpe =:= ru.typeOf[Array[Double]]
+  private val isMapOfStringToFloat = tpe =:= ru.typeOf[Map[String, Float]]
 
   /*
       use this for demux'ing in column type
@@ -104,6 +104,7 @@ class Column[+T: ru.TypeTag] private(val sc: SparkContext,
     else if (isString) classTag[C] == classTag[String]
     else if (isShort) classTag[C] == classTag[Short]
     else if (isArrayOfString) classTag[C] == classTag[Array[String]]
+    else if (isArrayOfDouble) classTag[C] == classTag[Array[Double]]
     else if (isFloat) classTag[C] == classTag[Float]
     else if (isMapOfStringToFloat) classTag[C] == classTag[Map[String, Float]]
     else false
@@ -502,7 +503,7 @@ object Column {
     val parseErrors = col.parseErrors
 
     val floatRdd = stringRdd.map { x =>
-      var y = Double.NaN
+      var y = Float.NaN
       try {
         y = x.toFloat
       } catch {
