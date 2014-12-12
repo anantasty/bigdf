@@ -53,7 +53,7 @@ $ sbt test #this might fail, but will pass from eclipse and intellij
 - Start a shell and begin playing.
 ```sh
 $ cd $REPOS
-$ ./spark/bin/spark-shell --jars ./bigdf/target/scala-2.10/bigdf_xxxx.jar 
+$ ./spark/bin/spark-shell --jars ./bigdf/target/scala-2.10/bigdf-assembly-*.jar 
 ```
 - https://github.com/AyasdiOpenSource/bigdf/wiki/ for examples
 - Look at DFTest.scala for usage [a simple example is shown below]
