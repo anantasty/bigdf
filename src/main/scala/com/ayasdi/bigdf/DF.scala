@@ -945,4 +945,9 @@ object DF {
     val rightWithKey = right.cols(on).rdd.zip(right.rowsRdd)
     leftWithKey.join(rightWithKey)
   }
+
+  def buildDF(sc: SparkContext, name: String, separator: String, fasterGuess: Boolean): DF = {
+      val sep : Char = separator.charAt(0)
+      DF(sc, name, sep, fasterGuess)
+  }
 }
