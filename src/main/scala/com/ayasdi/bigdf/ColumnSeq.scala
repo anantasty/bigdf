@@ -37,9 +37,9 @@ case class ColumnSeq(val cols: Seq[(String, Column[Any])]) {
     })
     val mapped = zippedCols.map { row => mapper(row)}
     if (tpe == classTag[Double])
-      Column(sc, mapped.asInstanceOf[RDD[Double]]).asInstanceOf[Column[Any]]
+      Column(sc, mapped.asInstanceOf[RDD[Double]])
     else if (tpe == classTag[String])
-      Column(sc, mapped.asInstanceOf[RDD[String]]).asInstanceOf[Column[Any]]
+      Column(sc, mapped.asInstanceOf[RDD[String]])
     else
       null
   }

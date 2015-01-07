@@ -21,3 +21,5 @@ target/*
 .idea_modules/*
 
 .settings
+
+lib/spark-assembly-1.2.0-SNAPSHOT-hadoop1.0.4.jar
